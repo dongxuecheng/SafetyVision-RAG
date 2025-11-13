@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+langchain
+langchain-core
+langchain-openai
+langchain-qdrant
+langchain-community
+langchain-text-splitters
+qdrant-client
+pydantic
+python-multipart
+pypdf

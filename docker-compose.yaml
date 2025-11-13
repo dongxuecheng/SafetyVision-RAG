@@ -1,0 +1,118 @@
+# Docker Compose v2 配置
+# 使用命令: docker compose up -d (注意没有连字符)
+
+# (1) 创建一个共享网络，让所有容器可以互相通信
+networks:
+  ai-network:
+    driver: bridge
+
+services:
+  # (服务 1) Qwen-VL 多模态大模型
+  vllm-qwen-vl:
+    image: vllm/vllm-openai:nightly
+    container_name: vllm-qwen-vl
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [ gpu ]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - /home/xcd/vllm/model:/model:ro # 只读挂载模型
+    ports:
+      - "28000:8000"
+    command:
+      - --model
+      - /model/qwen3-vl-4b
+      - --gpu-memory-utilization
+      - "0.7"
+      - --max-model-len
+      - "5840"
+    networks:
+      - ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # (服务 2) BGE-M3 Embedding 模型
+  vllm-bge-m3:
+    image: vllm/vllm-openai:nightly
+    container_name: vllm-bge-m3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [ gpu ]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - /home/xcd/vllm/model:/model:ro # 只读挂载模型
+    ports:
+      - "28001:8000"
+    command:
+      - --model
+      - /model/bge-m3
+      - --task
+      - embed
+      - --gpu-memory-utilization
+      - "0.2"
+    networks:
+      - ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # (服务 3) Qdrant 向量数据库
+  qdrant-server:
+    image: qdrant/qdrant:latest
+    container_name: qdrant-server
+    ports:
+      - "6333:6333" # HTTP/REST API
+      - "6334:6334" # gRPC API
+    volumes:
+      - ./data/qdrant:/qdrant/storage # 使用项目目录存储，便于备份和版本控制
+    networks:
+      - ai-network
+    restart: unless-stopped
+
+  # (服务 4) SafetyVision-RAG API (LangChain + FastAPI)
+  safetyvision-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: safetyvision-rag:latest
+    container_name: safetyvision-api
+    ports:
+      - "8080:8000"
+    volumes:
+      - ./file:/app/file:ro # 只读挂载 PDF 文件
+    environment:
+      QDRANT_HOST: qdrant-server
+      VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1
+      VLLM_EMBED_URL: http://vllm-bge-m3:8000/v1
+      QDRANT_COLLECTION: rag-test
+      VLLM_MODEL_NAME: /model/qwen3-vl-4b
+      VLLM_EMBED_MODEL: /model/bge-m3
+    networks:
+      - ai-network
+    depends_on:
+      vllm-qwen-vl:
+        condition: service_healthy
+      vllm-bge-m3:
+        condition: service_healthy
+      qdrant-server:
+        condition: service_started # 只等待启动，不等待健康检查
+    restart: unless-stopped
