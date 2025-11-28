@@ -20,9 +20,9 @@ from langchain_core.runnables import RunnablePassthrough, chain
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
+from src.document_processors import DocumentProcessorFactory
 from qdrant_client.models import (
     Filter,
     FieldCondition,
@@ -228,16 +228,21 @@ async def analyze_image(file: Annotated[UploadFile, File()]):
 async def upload_documents(
     files: List[UploadFile] = File(...), skip_existing: bool = Query(True)
 ):
-    """Upload PDF documents."""
+    """Upload documents (PDF, Word, Excel)."""
     if len(files) > Config.MAX_FILES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Too many files")
 
+    # Supported extensions
+    supported_exts = (".pdf", ".docx", ".doc", ".xlsx", ".xls")
+
     details = []
     for file in files:
-        if not file.filename.endswith(".pdf"):
+        if not file.filename.lower().endswith(supported_exts):
             details.append(
                 DocumentDetail(
-                    filename=file.filename, status="failed", message="Not a PDF"
+                    filename=file.filename,
+                    status="failed",
+                    message=f"Unsupported format. Supported: {', '.join(supported_exts)}",
                 )
             )
             continue
@@ -271,22 +276,23 @@ async def upload_documents(
             )
             continue
 
-        # Process PDF
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        # Process document based on type
+        file_ext = Path(file.filename).suffix.lower()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
             tmp.write(content)
             tmp_path = tmp.name
 
         try:
-            docs = PyPDFLoader(tmp_path).load()
-            for doc in docs:
-                doc.metadata.update(
-                    {
-                        "filename": file.filename,
-                        "upload_time": datetime.now().isoformat(),
-                    }
-                )
+            metadata = {
+                "filename": file.filename,
+                "upload_time": datetime.now().isoformat(),
+            }
 
-            chunks = text_splitter.split_documents(docs)
+            # Use appropriate processor
+            chunks = DocumentProcessorFactory.process(
+                tmp_path, metadata, Config.CHUNK_SIZE, Config.CHUNK_OVERLAP
+            )
+
             QdrantVectorStore.from_documents(
                 documents=chunks,
                 embedding=embeddings,
