@@ -99,6 +99,7 @@ services:
       - "8080:8000"
     volumes:
       - ./file:/app/file:ro # 只读挂载 PDF 文件
+      - ./:/workspace:ro # 只读挂载整个项目目录，便于访问配置和脚本
     environment:
       QDRANT_HOST: qdrant-server
       VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1
