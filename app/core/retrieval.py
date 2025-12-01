@@ -6,7 +6,6 @@ Implements various retrieval techniques following LangChain best practices
 
 from typing import List, Optional
 from langchain_core.documents import Document
-from langchain_core.runnables import chain
 
 
 class SafetyRetriever:
@@ -15,7 +14,6 @@ class SafetyRetriever:
     def __init__(self, vector_store):
         self.vector_store = vector_store
 
-    @chain
     async def retrieve_with_mmr(
         self, query: str, k: int = 5, fetch_k: int = 10, lambda_mult: float = 0.7
     ) -> List[Document]:
@@ -36,7 +34,6 @@ class SafetyRetriever:
         )
         return await retriever.ainvoke(query)
 
-    @chain
     async def retrieve_with_score(
         self, query: str, k: int = 5, score_threshold: Optional[float] = None
     ) -> List[Document]:
@@ -55,7 +52,6 @@ class SafetyRetriever:
         )
         return await retriever.ainvoke(query)
 
-    @chain
     async def retrieve_with_fallback(
         self, query: str, k: int = 5
     ) -> List[Document]:
