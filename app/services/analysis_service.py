@@ -28,7 +28,7 @@ from app.schemas.safety import SafetyReport
 class AnalysisService:
     """
     Service for safety analysis using VLM and RAG
-    
+
     Implements modern LangChain patterns:
     - Modular retrieval with multiple strategies (MMR, similarity)
     - @chain decorator for cleaner composition
@@ -91,7 +91,7 @@ class AnalysisService:
     async def _retrieve_safety_context(self, query: str) -> List[Document]:
         """
         Retrieve relevant safety regulations and standards
-        
+
         Uses SafetyRetriever with automatic fallback strategy
         """
         return await self.retriever.retrieve_with_fallback(query, k=5)
@@ -99,7 +99,7 @@ class AnalysisService:
     def _format_documents(self, docs: List[Document]) -> dict:
         """
         Format retrieved documents into structured context
-        
+
         Separates content and sources for better prompt clarity
         """
         if not docs:
@@ -167,7 +167,7 @@ class AnalysisService:
     def _create_rag_chain(self):
         """
         Create RAG chain using modern LangChain patterns
-        
+
         Uses @chain decorator for cleaner composition and better error handling
         """
         parser = JsonOutputParser(pydantic_object=SafetyReport)
@@ -184,12 +184,14 @@ class AnalysisService:
 
                 # Step 3: Generate report
                 prompt = self._get_prompt_template()
-                messages = await prompt.ainvoke({
-                    "hazards": hazards,
-                    "context": formatted["context"],
-                    "sources": formatted["sources"],
-                    "format_instructions": parser.get_format_instructions(),
-                })
+                messages = await prompt.ainvoke(
+                    {
+                        "hazards": hazards,
+                        "context": formatted["context"],
+                        "sources": formatted["sources"],
+                        "format_instructions": parser.get_format_instructions(),
+                    }
+                )
 
                 # Step 4: Parse response
                 response = await self.llm.ainvoke(messages)

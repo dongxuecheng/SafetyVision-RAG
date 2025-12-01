@@ -39,3 +39,8 @@ class DocumentProcessorFactory:
             raise ValueError(
                 f"不支持的文件类型: {ext}。支持的格式: .pdf, .docx, .doc, .xlsx, .xls"
             )
+
+    @staticmethod
+    def get_supported_extensions() -> List[str]:
+        """Get list of supported file extensions"""
+        return [".pdf", ".docx", ".doc", ".xlsx", ".xls"]

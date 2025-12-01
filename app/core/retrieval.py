@@ -19,9 +19,9 @@ class SafetyRetriever:
     ) -> List[Document]:
         """
         Retrieve using Maximal Marginal Relevance
-        
+
         MMR balances relevance and diversity to avoid redundant results
-        
+
         Args:
             query: Search query
             k: Number of documents to return
@@ -39,11 +39,13 @@ class SafetyRetriever:
     ) -> List[Document]:
         """
         Retrieve with similarity scores
-        
+
         Optionally filter by minimum score threshold
         """
         retriever = self.vector_store.as_retriever(
-            search_type="similarity_score_threshold" if score_threshold else "similarity",
+            search_type=(
+                "similarity_score_threshold" if score_threshold else "similarity"
+            ),
             search_kwargs=(
                 {"k": k, "score_threshold": score_threshold}
                 if score_threshold
@@ -52,12 +54,10 @@ class SafetyRetriever:
         )
         return await retriever.ainvoke(query)
 
-    async def retrieve_with_fallback(
-        self, query: str, k: int = 5
-    ) -> List[Document]:
+    async def retrieve_with_fallback(self, query: str, k: int = 5) -> List[Document]:
         """
         Retrieve with automatic fallback
-        
+
         Tries MMR first, falls back to similarity search if it fails
         """
         try:

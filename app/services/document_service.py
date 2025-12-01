@@ -49,16 +49,8 @@ class DocumentService:
         # Get file extension
         file_ext = Path(file.filename).suffix.lower()
 
-        # Special check for .doc files
-        if file_ext == ".doc":
-            return DocumentDetail(
-                filename=file.filename,
-                status="failed",
-                message="不支持旧版 .doc 格式，请转换为 .docx 格式后上传",
-            )
-
         # Check if file type is supported
-        supported_exts = DocumentProcessorFactory.get_supported_extensions()
+        supported_exts = [".pdf", ".docx", ".doc", ".xlsx", ".xls"]
         if file_ext not in supported_exts:
             return DocumentDetail(
                 filename=file.filename,
