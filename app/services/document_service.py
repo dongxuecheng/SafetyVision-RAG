@@ -13,7 +13,7 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue
 from app.core.config import get_settings
 from app.core.deps import get_qdrant_client, get_embeddings, get_vector_store
 from app.schemas.safety import DocumentDetail, DocumentInfo
-from src.document_processors import DocumentProcessorFactory
+from app.services.processors import DocumentProcessorFactory
 
 
 class DocumentService:
