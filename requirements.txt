@@ -10,3 +10,6 @@ qdrant-client
 pydantic
 python-multipart
 pypdf
+openpyxl
+python-docx
+xlrd
