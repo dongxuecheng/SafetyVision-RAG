@@ -21,13 +21,13 @@ class PDFProcessor(DocumentProcessor):
     ) -> List[Document]:
         """
         Process PDF file using traditional chunking strategy
-        
+
         Args:
             file_path: Path to PDF file
             metadata: Metadata to attach to documents
             chunk_size: Size of text chunks
             chunk_overlap: Overlap between chunks
-            
+
         Returns:
             List of Document objects with chunked content
         """

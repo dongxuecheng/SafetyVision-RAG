@@ -25,17 +25,17 @@ class ExcelProcessor(DocumentProcessor):
     ) -> List[Document]:
         """
         Process XLSX file using Row-to-Text strategy
-        
+
         Converts each row into semantic text combined with headers.
         This preserves the structured nature of Excel data while
         enabling semantic search.
-        
+
         Args:
             file_path: Path to XLSX file
             metadata: Metadata to attach to documents
             chunk_size: Not used for Excel (each row is a document)
             chunk_overlap: Not used for Excel
-            
+
         Returns:
             List of Document objects, one per row
         """
@@ -93,13 +93,13 @@ class LegacyExcelProcessor(DocumentProcessor):
     ) -> List[Document]:
         """
         Process legacy XLS file using Row-to-Text strategy
-        
+
         Args:
             file_path: Path to XLS file
             metadata: Metadata to attach to documents
             chunk_size: Not used for Excel (each row is a document)
             chunk_overlap: Not used for Excel
-            
+
         Returns:
             List of Document objects, one per row
         """

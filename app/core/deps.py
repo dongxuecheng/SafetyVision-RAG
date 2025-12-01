@@ -1,6 +1,7 @@
 """
 Dependencies for dependency injection
 """
+
 from functools import lru_cache
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore

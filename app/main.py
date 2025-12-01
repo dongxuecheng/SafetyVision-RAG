@@ -1,6 +1,7 @@
 """
 Main FastAPI application
 """
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
@@ -22,18 +23,18 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     """Create and configure FastAPI application"""
     settings = get_settings()
-    
+
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
         description="AI-Powered Safety Hazard Detection using VLM + RAG",
         lifespan=lifespan,
     )
-    
+
     # Include routers
     app.include_router(documents.router, prefix="/api")
     app.include_router(analysis.router, prefix="/api")
-    
+
     return app
 
 

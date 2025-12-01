@@ -1,6 +1,7 @@
 """
 Document processing service
 """
+
 import tempfile
 from pathlib import Path
 from datetime import datetime
@@ -18,12 +19,12 @@ from app.services.processors import DocumentProcessorFactory
 
 class DocumentService:
     """Service for document operations"""
-    
+
     def __init__(self):
         self.settings = get_settings()
         self.client = get_qdrant_client()
         self.embeddings = get_embeddings()
-    
+
     async def upload_documents(
         self, files: List[UploadFile], skip_existing: bool = True
     ) -> List[DocumentDetail]:
@@ -33,21 +34,21 @@ class DocumentService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Too many files. Maximum {self.settings.max_files} files allowed",
             )
-        
+
         details = []
         for file in files:
             detail = await self._process_single_file(file, skip_existing)
             details.append(detail)
-        
+
         return details
-    
+
     async def _process_single_file(
         self, file: UploadFile, skip_existing: bool
     ) -> DocumentDetail:
         """Process a single file"""
         # Get file extension
         file_ext = Path(file.filename).suffix.lower()
-        
+
         # Special check for .doc files
         if file_ext == ".doc":
             return DocumentDetail(
@@ -55,7 +56,7 @@ class DocumentService:
                 status="failed",
                 message="不支持旧版 .doc 格式，请转换为 .docx 格式后上传",
             )
-        
+
         # Check if file type is supported
         supported_exts = DocumentProcessorFactory.get_supported_extensions()
         if file_ext not in supported_exts:
@@ -64,14 +65,14 @@ class DocumentService:
                 status="failed",
                 message=f"不支持的文件类型。支持: {', '.join(supported_exts)}",
             )
-        
+
         # Read file content
         content = await file.read()
         if len(content) > self.settings.max_file_size:
             return DocumentDetail(
                 filename=file.filename, status="failed", message="文件过大"
             )
-        
+
         # Check if exists
         result = self.client.scroll(
             collection_name=self.settings.qdrant_collection,
@@ -83,28 +84,31 @@ class DocumentService:
             limit=1,
             with_vectors=False,
         )
-        
+
         if len(result[0]) > 0 and skip_existing:
             return DocumentDetail(
                 filename=file.filename, status="skipped", message="Already exists"
             )
-        
+
         # Process document
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
             tmp.write(content)
             tmp_path = tmp.name
-        
+
         try:
             metadata = {
                 "filename": file.filename,
                 "upload_time": datetime.now().isoformat(),
             }
-            
+
             # Process the document
             chunks = DocumentProcessorFactory.process(
-                tmp_path, metadata, self.settings.chunk_size, self.settings.chunk_overlap
+                tmp_path,
+                metadata,
+                self.settings.chunk_size,
+                self.settings.chunk_overlap,
             )
-            
+
             # Store in vector database
             QdrantVectorStore.from_documents(
                 documents=chunks,
@@ -113,7 +117,7 @@ class DocumentService:
                 collection_name=self.settings.qdrant_collection,
                 force_recreate=False,
             )
-            
+
             return DocumentDetail(
                 filename=file.filename,
                 status="success",
@@ -134,12 +138,12 @@ class DocumentService:
             )
         finally:
             Path(tmp_path).unlink(missing_ok=True)
-    
+
     def list_documents(self) -> List[DocumentInfo]:
         """List all documents"""
         all_docs = {}
         offset = None
-        
+
         while True:
             points, offset = self.client.scroll(
                 collection_name=self.settings.qdrant_collection,
@@ -148,23 +152,23 @@ class DocumentService:
                 with_payload=True,
                 with_vectors=False,
             )
-            
+
             if not points:
                 break
-            
+
             for point in points:
                 filename = point.payload.get("metadata", {}).get("filename", "unknown")
                 all_docs.setdefault(filename, 0)
                 all_docs[filename] += 1
-            
+
             if offset is None:
                 break
-        
+
         return [
             DocumentInfo(filename=name, chunks_count=count)
             for name, count in all_docs.items()
         ]
-    
+
     def delete_documents(self, filenames: List[str]) -> List[dict]:
         """Delete documents by filename"""
         results = []
@@ -172,18 +176,16 @@ class DocumentService:
             result = self.client.scroll(
                 collection_name=self.settings.qdrant_collection,
                 scroll_filter={
-                    "must": [
-                        {"key": "metadata.filename", "match": {"value": filename}}
-                    ]
+                    "must": [{"key": "metadata.filename", "match": {"value": filename}}]
                 },
                 limit=10000,
                 with_vectors=False,
             )
-            
+
             if len(result[0]) == 0:
                 results.append({"filename": filename, "status": "not_found"})
                 continue
-            
+
             self.client.delete(
                 collection_name=self.settings.qdrant_collection,
                 points_selector=Filter(
@@ -194,7 +196,7 @@ class DocumentService:
                     ]
                 ),
             )
-            
+
             results.append(
                 {
                     "filename": filename,
@@ -202,5 +204,5 @@ class DocumentService:
                     "chunks_removed": len(result[0]),
                 }
             )
-        
+
         return results

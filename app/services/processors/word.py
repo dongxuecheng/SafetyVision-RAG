@@ -23,13 +23,13 @@ class WordProcessor(DocumentProcessor):
     ) -> List[Document]:
         """
         Process DOCX file using traditional chunking strategy
-        
+
         Args:
             file_path: Path to DOCX file
             metadata: Metadata to attach to documents
             chunk_size: Size of text chunks
             chunk_overlap: Overlap between chunks
-            
+
         Returns:
             List of Document objects with chunked content
         """
@@ -58,16 +58,16 @@ class LegacyWordProcessor(DocumentProcessor):
     ) -> List[Document]:
         """
         Process legacy DOC file using antiword tool
-        
+
         Args:
             file_path: Path to DOC file
             metadata: Metadata to attach to documents
             chunk_size: Size of text chunks
             chunk_overlap: Overlap between chunks
-            
+
         Returns:
             List of Document objects with chunked content
-            
+
         Raises:
             ValueError: If antiword is not installed or processing fails
         """
