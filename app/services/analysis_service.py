@@ -2,6 +2,7 @@
 Safety analysis service using VLM and RAG
 
 Implements RAG following LangChain v1.0+ best practices:
+- with_structured_output for type-safe responses
 - Modular retrieval tool pattern
 - Proper error handling
 - Async-first design
@@ -10,11 +11,8 @@ Implements RAG following LangChain v1.0+ best practices:
 
 import base64
 from typing import List
-from functools import lru_cache
 
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.documents import Document
 from langchain_core.runnables import chain
 from fastapi import UploadFile, HTTPException, status
@@ -29,18 +27,29 @@ class AnalysisService:
     """
     Service for safety analysis using VLM and RAG
 
-    Implements modern LangChain patterns:
+    Implements modern LangChain v1.0+ patterns:
+    - with_structured_output for type-safe Pydantic responses
     - Modular retrieval with multiple strategies (MMR, similarity)
     - @chain decorator for cleaner composition
     - Proper async/await throughout
     - Comprehensive error handling
-    - Cached resources where appropriate
     """
+
+    # Class-level system prompt (avoids lru_cache on instance methods)
+    SYSTEM_PROMPT = """你是安全报告生成器。根据发现的隐患和检索到的规范，生成结构化安全报告。
+
+分析要求：
+1. rule_reference 格式：《标准名称》(标准编号) 第X.X.X条规定：具体内容。
+2. 如果未检索到相关规范，在 rule_reference 中说明"未找到相关规范"
+3. 严格按照 SafetyReport schema 返回结构化数据
+"""
 
     def __init__(self):
         self.llm = get_llm()
         self.settings = get_settings()
         self.retriever = SafetyRetriever(get_vector_store())
+        # Create structured output model using with_structured_output
+        self.structured_llm = self.llm.with_structured_output(SafetyReport)
 
     async def analyze_image(self, file: UploadFile) -> SafetyReport:
         """Analyze image for safety hazards"""
@@ -131,46 +140,33 @@ class AnalysisService:
             "sources": "\n".join(sources_parts),
         }
 
-    @lru_cache()
-    def _get_prompt_template(self) -> ChatPromptTemplate:
-        """Get cached prompt template"""
-        template = """你是安全报告生成器。根据检索到的规范和发现的隐患，生成结构化JSON报告。
+    def _build_analysis_messages(
+        self, hazards: str, context: str, sources: str
+    ) -> List:
+        """Build messages for structured output generation"""
+        return [
+            SystemMessage(content=self.SYSTEM_PROMPT),
+            HumanMessage(
+                content=f"""请根据以下信息生成安全报告：
 
-{format_instructions}
-
----
-相关规范:
+【相关规范】
 {context}
 
----
-参考文档来源:
+【参考文档来源】
 {sources}
 
----
-发现的隐患:
+【发现的隐患】
 {hazards}
-
-重要说明：
-1. rule_reference 字段必须按照以下格式填写：
-   《标准名称》(标准编号) 第X.X.X条规定：具体规定内容。来自文档：文件名
-   
-2. 示例格式：
-   《建筑施工安全检查标准》(JGJ59-2011) 第3.1.11条规定：基坑边坡稳定，无积水。来自文档：安全规范.pdf
-   
-3. 如果检索到的文档中没有明确的标准编号，也要尽量提取标准名称和具体条款内容
-4. 必须在末尾注明"来自文档："后跟上述"参考文档来源"中的文件名
-5. 如果涉及多个文档，用逗号分隔文件名
-6. 如果未检索到相关规范，在 rule_reference 中说明"未找到相关规范"
 """
-        return ChatPromptTemplate.from_template(template)
+            ),
+        ]
 
     def _create_rag_chain(self):
         """
-        Create RAG chain using modern LangChain patterns
+        Create RAG chain using modern LangChain v1.0+ patterns
 
-        Uses @chain decorator for cleaner composition and better error handling
+        Uses with_structured_output for automatic Pydantic validation
         """
-        parser = JsonOutputParser(pydantic_object=SafetyReport)
 
         @chain
         async def rag_chain(hazards: str) -> SafetyReport:
@@ -182,22 +178,22 @@ class AnalysisService:
                 # Step 2: Format documents
                 formatted = self._format_documents(docs)
 
-                # Step 3: Generate report
-                prompt = self._get_prompt_template()
-                messages = await prompt.ainvoke(
-                    {
-                        "hazards": hazards,
-                        "context": formatted["context"],
-                        "sources": formatted["sources"],
-                        "format_instructions": parser.get_format_instructions(),
-                    }
+                # Step 3: Build messages
+                messages = self._build_analysis_messages(
+                    hazards=hazards,
+                    context=formatted["context"],
+                    sources=formatted["sources"],
                 )
 
-                # Step 4: Parse response
-                response = await self.llm.ainvoke(messages)
-                result = parser.parse(response.content)
+                # Step 4: Generate structured report
+                # with_structured_output automatically:
+                # - Injects schema into prompt
+                # - Validates response against Pydantic model
+                # - Retries on validation errors
+                # - Returns typed SafetyReport instance (not dict!)
+                report = await self.structured_llm.ainvoke(messages)
 
-                return result
+                return report
 
             except Exception as e:
                 # Graceful error handling
