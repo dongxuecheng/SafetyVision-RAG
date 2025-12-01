@@ -12,3 +12,4 @@ python-multipart
 pypdf
 openpyxl
 python-docx
+xlrd

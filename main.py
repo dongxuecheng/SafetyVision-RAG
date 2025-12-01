@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.runnables import RunnablePassthrough, chain
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda, chain
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
@@ -46,7 +46,7 @@ class Config:
     EMBED_URL = os.getenv("VLLM_EMBED_URL", "http://vllm-bge-m3:8000/v1")
     VLM_MODEL = os.getenv("VLLM_MODEL_NAME", "/model/qwen3-vl-4b")
     EMBED_MODEL = os.getenv("VLLM_EMBED_MODEL", "/model/bge-m3")
-    MAX_FILE_SIZE = 10 * 1024 * 1024
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 增加到50MB
     MAX_FILES = 10
     CHUNK_SIZE = 1000
     CHUNK_OVERLAP = 200
@@ -137,7 +137,7 @@ async def vlm_chain(image_b64: str) -> str:
             content=[
                 {
                     "type": "text",
-                    "text": "你是安全专家。分析图片并简洁列出3-5个最重要的安全隐患，每条用一行描述。",
+                    "text": "你是安全专家。分析图片并简洁列出1-5个最重要的安全隐患，每条用一行描述。",
                 },
                 {
                     "type": "image_url",
@@ -161,19 +161,61 @@ def create_rag_chain():
 {context}
 
 ---
+参考文档来源:
+{sources}
+
+---
 发现的隐患:
 {question}
+
+重要说明：
+1. rule_reference 字段必须按照以下格式填写，若没有对应的字段，则直接不写，不要乱编！！！：
+   《标准名称》(标准编号) 第某条规定：具体规定内容。来自文档：文件名1, 文件名2
+   
+2. 示例格式：
+   《xxx标准》第x条规定：xxxx,xxx。来自文档：安全规范.pdf
+   
+3. 如果检索到的文档中没有明确的标准编号，则只需写标准名称和具体规定内容即可，不要编造编号。
+4. 必须在末尾注明"来自文档："后跟上述"参考文档来源"中的文件名。
+5. 如果涉及多个文档，用逗号分隔文件名。
+6. 如果没有任何相关标准，请将rule_reference字段设置为，"暂无相关标准"。
 """
     parser = JsonOutputParser(pydantic_object=SafetyReport)
-    retriever = get_vector_store().as_retriever(search_kwargs={"k": 2})
+    retriever = get_vector_store().as_retriever(search_kwargs={"k": 3})
+
+    def format_docs_with_sources(docs):
+        """格式化文档内容并提取来源"""
+        context_parts = []
+        sources_parts = []
+        seen_files = set()
+
+        for i, doc in enumerate(docs, 1):
+            # 添加文档内容
+            context_parts.append(f"[文档{i}] {doc.page_content[:800]}")
+
+            # 提取文件名
+            filename = doc.metadata.get("filename", "未知来源")
+            if filename not in seen_files:
+                seen_files.add(filename)
+                sources_parts.append(f"- {filename}")
+
+        return {
+            "context": "\n---\n".join(context_parts),
+            "sources": "\n".join(sources_parts) if sources_parts else "无参考文档",
+        }
 
     return (
         {
-            "context": retriever
-            | (lambda docs: "\n---\n".join(d.page_content[:800] for d in docs)),
+            "docs": retriever,
             "question": RunnablePassthrough(),
-            "format_instructions": lambda _: parser.get_format_instructions(),
         }
+        | RunnableLambda(
+            lambda x: {
+                **format_docs_with_sources(x["docs"]),
+                "question": x["question"],
+                "format_instructions": parser.get_format_instructions(),
+            }
+        )
         | ChatPromptTemplate.from_template(template)
         | llm
         | parser
@@ -307,6 +349,24 @@ async def upload_documents(
                     status="success",
                     chunks=len(chunks),
                     message="Uploaded successfully",
+                )
+            )
+        except ValueError as e:
+            # Handle unsupported format errors
+            details.append(
+                DocumentDetail(
+                    filename=file.filename,
+                    status="failed",
+                    message=str(e),
+                )
+            )
+        except Exception as e:
+            # Handle other processing errors
+            details.append(
+                DocumentDetail(
+                    filename=file.filename,
+                    status="failed",
+                    message=f"Processing failed: {str(e)}",
                 )
             )
         finally:

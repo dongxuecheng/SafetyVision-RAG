@@ -6,9 +6,9 @@ WORKDIR /app
 RUN sed -i 's|http://deb.debian.org|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources && \
     sed -i 's|http://security.debian.org|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
 
-# 安装 curl (用于健康检查)
+# 安装 curl 和 antiword (用于健康检查和.doc文档转换)
 RUN apt-get update && \
-    apt-get install -y curl && \
+    apt-get install -y curl antiword && \
     rm -rf /var/lib/apt/lists/*
 
 # 设置 pip 使用清华源
@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制应用代码
 COPY main.py .
 COPY init.sh .
+COPY src/ ./src/
 
 # 创建 file 目录
 RUN mkdir -p /app/file
