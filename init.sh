@@ -34,4 +34,4 @@ echo "All Services Ready - Starting API"
 echo "==================================="
 
 # 启动 API 服务
-exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

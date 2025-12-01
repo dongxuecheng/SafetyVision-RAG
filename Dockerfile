@@ -19,9 +19,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制应用代码
-COPY main.py .
-COPY init.sh .
+COPY app/ ./app/
 COPY src/ ./src/
+COPY init.sh .
 
 # 创建 file 目录
 RUN mkdir -p /app/file
