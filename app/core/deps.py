@@ -27,7 +27,7 @@ def get_llm() -> ChatOpenAI:
         api_key="not-needed",
         base_url=settings.vllm_chat_url,
         temperature=0.1,
-        max_tokens=800,
+        max_tokens=2048,  # Increased for structured output (SafetyViolation generation)
     )
 
 

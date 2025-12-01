@@ -10,7 +10,9 @@ Implements RAG following LangChain v1.0+ best practices:
 """
 
 import base64
+import asyncio
 from typing import List
+from uuid import uuid4
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.documents import Document
@@ -20,7 +22,7 @@ from fastapi import UploadFile, HTTPException, status
 from app.core.deps import get_llm, get_vector_store
 from app.core.config import get_settings
 from app.core.retrieval import SafetyRetriever
-from app.schemas.safety import SafetyReport
+from app.schemas.safety import SafetyReport, SafetyViolation, HazardList
 
 
 class AnalysisService:
@@ -36,10 +38,11 @@ class AnalysisService:
     """
 
     # Class-level system prompt (avoids lru_cache on instance methods)
+    # Note: This is kept for backward compatibility but not actively used in per-hazard retrieval
     SYSTEM_PROMPT = """你是安全报告生成器。根据发现的隐患和检索到的规范，生成结构化安全报告。
 
 分析要求：
-1. rule_reference 格式：《标准名称》(标准编号) 第X.X.X条规定：具体内容。
+1. rule_reference 根据文档内容灵活填写（有标准编号则引用标准，无则引用原文）
 2. 如果未检索到相关规范，在 rule_reference 中说明"未找到相关规范"
 3. 严格按照 SafetyReport schema 返回结构化数据
 """
@@ -48,11 +51,20 @@ class AnalysisService:
         self.llm = get_llm()
         self.settings = get_settings()
         self.retriever = SafetyRetriever(get_vector_store())
-        # Create structured output model using with_structured_output
-        self.structured_llm = self.llm.with_structured_output(SafetyReport)
+        # Structured LLMs for different outputs
+        self.hazards_llm = self.llm.with_structured_output(HazardList)
+        self.violation_llm = self.llm.with_structured_output(SafetyViolation)
 
     async def analyze_image(self, file: UploadFile) -> SafetyReport:
-        """Analyze image for safety hazards"""
+        """
+        Analyze image for safety hazards using per-hazard retrieval
+
+        Flow:
+        1. VLM extracts structured hazard list
+        2. Each hazard independently retrieves relevant regulations
+        3. Each hazard generates individual SafetyViolation with specific rule_reference
+        4. Combine all violations into final report
+        """
         # Validate file type
         if not file.content_type or not file.content_type.startswith("image/"):
             raise HTTPException(
@@ -68,42 +80,87 @@ class AnalysisService:
                 detail="File too large",
             )
 
-        # Extract hazards from image
+        # Step 1: Extract structured hazard list using VLM
         image_b64 = base64.b64encode(image_bytes).decode()
-        hazards = await self._extract_hazards(image_b64)
+        hazards_list = await self._extract_hazards_as_list(image_b64)
 
-        # Generate report using RAG
-        rag_chain = self._create_rag_chain()
-        report = await rag_chain.ainvoke(hazards)
+        if not hazards_list:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No safety hazards detected in the image",
+            )
+
+        # Step 2: Batch retrieve documents for each hazard (parallel)
+        docs_per_hazard = await self._batch_retrieve_per_hazard(hazards_list)
+
+        # Step 3: Generate violations for each hazard (parallel)
+        violation_tasks = [
+            self._generate_single_violation(hazard, docs, i + 1)
+            for i, (hazard, docs) in enumerate(zip(hazards_list, docs_per_hazard))
+        ]
+        violations = await asyncio.gather(*violation_tasks)
+
+        # Step 4: Assemble final report
+        report = SafetyReport(
+            report_id=str(uuid4()),
+            violations=violations,
+        )
 
         return report
 
-    async def _extract_hazards(self, image_b64: str) -> str:
-        """Extract hazards from image using VLM"""
+    async def _extract_hazards_as_list(self, image_b64: str) -> List[str]:
+        """
+        Extract hazards from image as structured list using VLM
+
+        Returns list of hazard descriptions (e.g., ["未佩戴安全帽", "高空作业无安全带"])
+        """
         messages = [
+            SystemMessage(
+                content="""你是安全专家。分析图片并提取安全隐患。
+
+要求：
+1. 每条隐患用简洁语言描述（10-20字）
+2. 按严重程度排序（最严重的在前）
+3. 提取 1-5 个最重要的隐患
+4. 返回结构化的隐患列表
+"""
+            ),
             HumanMessage(
                 content=[
                     {
                         "type": "text",
-                        "text": "你是安全专家。分析图片并简洁列出3-5个最重要的安全隐患，每条用一行描述。",
+                        "text": "请分析图片中的安全隐患：",
                     },
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/png;base64,{image_b64}"},
                     },
                 ]
-            )
+            ),
         ]
-        response = await self.llm.ainvoke(messages)
-        return response.content
 
-    async def _retrieve_safety_context(self, query: str) -> List[Document]:
-        """
-        Retrieve relevant safety regulations and standards
+        try:
+            result = await self.hazards_llm.ainvoke(messages)
+            return result.hazards
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"VLM 隐患提取失败: {str(e)}",
+            )
 
-        Uses SafetyRetriever with automatic fallback strategy
+    async def _batch_retrieve_per_hazard(
+        self, hazards_list: List[str]
+    ) -> List[List[Document]]:
         """
-        return await self.retriever.retrieve_with_fallback(query, k=5)
+        Batch retrieve documents for each hazard in parallel
+
+        Each hazard gets independent retrieval for precise rule matching
+        """
+        tasks = [
+            self.retriever.retrieve_with_fallback(hazard, k=3)
+            for hazard in hazards_list
+        ]
+        return await asyncio.gather(*tasks)
 
     def _format_documents(self, docs: List[Document]) -> dict:
         """
@@ -140,66 +197,64 @@ class AnalysisService:
             "sources": "\n".join(sources_parts),
         }
 
-    def _build_analysis_messages(
-        self, hazards: str, context: str, sources: str
-    ) -> List:
-        """Build messages for structured output generation"""
-        return [
-            SystemMessage(content=self.SYSTEM_PROMPT),
+    async def _generate_single_violation(
+        self, hazard: str, docs: List[Document], hazard_id: int
+    ) -> SafetyViolation:
+        """
+        Generate SafetyViolation for a single hazard with its retrieved documents
+
+        This ensures each hazard has precise rule_reference from relevant docs
+        """
+        formatted = self._format_documents(docs)
+
+        messages = [
+            SystemMessage(
+                content="""你是安全报告生成器。为单条隐患生成 SafetyViolation。
+
+输出要求（简洁明确）：
+1. hazard_description: 隐患的详细描述（20-50字）
+2. recommendations: 整改建议（1-3条，每条不超过30字）
+3. rule_reference: 规范引用（根据检索到的文档内容灵活填写）
+
+- 不要编造不存在的标准编号或条款号
+- 不要添加检索文档中没有的内容
+- 必须保留来源的精确定位信息（如 Excel 的工作表名和行号）
+
+关键原则：如实转述检索到的内容，根据文档实际格式选择合适的引用方式
+"""
+            ),
             HumanMessage(
-                content=f"""请根据以下信息生成安全报告：
+                content=f"""隐患: {hazard}
 
-【相关规范】
-{context}
+相关规范:
+{formatted['context'][:1500]}
 
-【参考文档来源】
-{sources}
-
-【发现的隐患】
-{hazards}
+来源: {formatted['sources']}
 """
             ),
         ]
 
-    def _create_rag_chain(self):
-        """
-        Create RAG chain using modern LangChain v1.0+ patterns
-
-        Uses with_structured_output for automatic Pydantic validation
-        """
-
-        @chain
-        async def rag_chain(hazards: str) -> SafetyReport:
-            """Execute RAG pipeline: retrieve -> format -> generate"""
-            try:
-                # Step 1: Retrieve relevant documents
-                docs = await self._retrieve_safety_context(hazards)
-
-                # Step 2: Format documents
-                formatted = self._format_documents(docs)
-
-                # Step 3: Build messages
-                messages = self._build_analysis_messages(
-                    hazards=hazards,
-                    context=formatted["context"],
-                    sources=formatted["sources"],
+        try:
+            # Retry with increased max_tokens if needed
+            violation = await self.violation_llm.ainvoke(messages)
+            violation.hazard_id = hazard_id
+            return violation
+        except Exception as e:
+            # Fallback: return minimal violation
+            error_msg = str(e)
+            if "length limit" in error_msg or "max_tokens" in error_msg:
+                # Token limit exceeded, return simplified violation
+                return SafetyViolation(
+                    hazard_id=hazard_id,
+                    hazard_description=hazard,
+                    recommendations="1. 立即停止作业并整改\n2. 联系安全负责人检查\n3. 符合规范后方可继续",
+                    rule_reference="未找到相关规范（输出超过长度限制，请优化检索文档）",
                 )
-
-                # Step 4: Generate structured report
-                # with_structured_output automatically:
-                # - Injects schema into prompt
-                # - Validates response against Pydantic model
-                # - Retries on validation errors
-                # - Returns typed SafetyReport instance (not dict!)
-                report = await self.structured_llm.ainvoke(messages)
-
-                return report
-
-            except Exception as e:
-                # Graceful error handling
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"RAG 处理失败: {str(e)}",
+            else:
+                # Other errors
+                return SafetyViolation(
+                    hazard_id=hazard_id,
+                    hazard_description=hazard,
+                    recommendations="请咨询安全专家获取整改建议",
+                    rule_reference=f"未找到相关规范（检索失败: {error_msg[:100]}）",
                 )
-
-        return rag_chain

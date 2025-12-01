@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     vllm_embed_model: str = "/model/bge-m3"
 
     # File Upload Settings
-    max_file_size: int = 50 * 1024 * 1024  # 50MB
+    max_file_size: int = 500 * 1024 * 1024  # 50MB
     max_files: int = 10
 
     # Text Processing Settings

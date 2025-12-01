@@ -6,6 +6,14 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 
+class HazardList(BaseModel):
+    """List of detected hazards from VLM analysis"""
+
+    hazards: List[str] = Field(
+        description="List of detected safety hazards, each described in 10-20 words"
+    )
+
+
 class SafetyViolation(BaseModel):
     """Safety violation model"""
 
