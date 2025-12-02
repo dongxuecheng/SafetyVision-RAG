@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     vllm_embed_url: str = "http://vllm-bge-m3:8000/v1"
     vllm_embed_model: str = "/model/bge-m3"
 
+    # Rerank Settings
+    vllm_rerank_url: str = "http://vllm-bge-reranker:8000"
+    vllm_rerank_model: str = "/model/bge-reranker-v2-m3"
+
     # File Upload Settings
     max_file_size: int = 500 * 1024 * 1024  # 50MB
     max_files: int = 10

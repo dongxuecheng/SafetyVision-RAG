@@ -13,3 +13,4 @@ pypdf
 openpyxl
 python-docx
 xlrd
+cohere>=5.0.0

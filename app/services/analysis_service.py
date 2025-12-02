@@ -50,7 +50,12 @@ class AnalysisService:
     def __init__(self):
         self.llm = get_llm()
         self.settings = get_settings()
-        self.retriever = SafetyRetriever(get_vector_store())
+        # Initialize retriever with Rerank support
+        from app.core.deps import get_reranker_client
+
+        self.retriever = SafetyRetriever(
+            get_vector_store(), reranker_client=get_reranker_client()
+        )
         # Structured LLMs for different outputs
         self.hazards_llm = self.llm.with_structured_output(HazardList)
         self.violation_llm = self.llm.with_structured_output(SafetyViolation)
@@ -218,7 +223,7 @@ class AnalysisService:
 
 - 不要编造不存在的标准编号或条款号
 - 不要添加检索文档中没有的内容
-- 必须保留来源的精确定位信息（如 Excel 的工作表名和行号）
+- 必须保留来源的精确定位信息（如 Excel 的工作表名和行号,doc文档的页码等）
 
 关键原则：如实转述检索到的内容，根据文档实际格式选择合适的引用方式
 """

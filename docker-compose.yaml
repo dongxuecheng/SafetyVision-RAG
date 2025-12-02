@@ -88,7 +88,39 @@ services:
       - ai-network
     restart: unless-stopped
 
-  # (服务 4) SafetyVision-RAG API (LangChain + FastAPI)
+  # (服务 4) BGE-Reranker-v2-M3 重排序模型
+  vllm-bge-reranker:
+    image: vllm/vllm-openai:nightly
+    container_name: vllm-bge-reranker
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [ gpu ]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - /home/xcd/vllm/model:/model:ro
+    ports:
+      - "28002:8000"
+    command:
+      - --model
+      - /model/bge-reranker-v2-m3
+      - --gpu-memory-utilization
+      - "0.15"
+    networks:
+      - ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # (服务 5) SafetyVision-RAG API (LangChain + FastAPI)
   safetyvision-api:
     build:
       context: .
@@ -104,15 +136,19 @@ services:
       QDRANT_HOST: qdrant-server
       VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1
       VLLM_EMBED_URL: http://vllm-bge-m3:8000/v1
+      VLLM_RERANK_URL: http://vllm-bge-reranker:8000
       QDRANT_COLLECTION: rag-test
       VLLM_MODEL_NAME: /model/qwen3-vl-4b
       VLLM_EMBED_MODEL: /model/bge-m3
+      VLLM_RERANK_MODEL: /model/bge-reranker-v2-m3
     networks:
       - ai-network
     depends_on:
       vllm-qwen-vl:
         condition: service_healthy
       vllm-bge-m3:
+        condition: service_healthy
+      vllm-bge-reranker:
         condition: service_healthy
       qdrant-server:
         condition: service_started # 只等待启动，不等待健康检查

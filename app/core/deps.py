@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
+import cohere
 
 from app.core.config import get_settings
 
@@ -26,7 +27,7 @@ def get_llm() -> ChatOpenAI:
         model_name=settings.vllm_model_name,
         api_key="not-needed",
         base_url=settings.vllm_chat_url,
-        temperature=0.1,
+        temperature=0,
         max_tokens=2048,  # Increased for structured output (SafetyViolation generation)
     )
 
@@ -63,3 +64,18 @@ def ensure_collection() -> None:
             collection_name=settings.qdrant_collection,
             vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
         )
+
+
+@lru_cache()
+def get_reranker_client() -> cohere.ClientV2:
+    """
+    Get Cohere Rerank client instance (connected to vLLM)
+
+    vLLM's /v1/rerank endpoint is compatible with Cohere API
+    """
+    settings = get_settings()
+    rerank_url = settings.vllm_rerank_url
+
+    return cohere.ClientV2(
+        api_key="dummy-key", base_url=rerank_url  # vLLM doesn't validate API keys
+    )
