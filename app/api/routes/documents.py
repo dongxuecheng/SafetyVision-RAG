@@ -3,10 +3,11 @@ API routes for document operations
 """
 
 from typing import List
-from fastapi import APIRouter, UploadFile, File, Query
+from fastapi import APIRouter, UploadFile, File, Query, Depends
 
 from app.schemas.safety import DocumentUploadResponse, DocumentInfo
 from app.services.document_service import DocumentService
+from app.core.deps import get_document_service
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -15,9 +16,9 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 async def upload_documents(
     files: List[UploadFile] = File(...),
     skip_existing: bool = Query(True, description="Skip already uploaded files"),
+    service: DocumentService = Depends(get_document_service),
 ):
     """Upload and process multiple documents"""
-    service = DocumentService()
     details = await service.upload_documents(files, skip_existing)
 
     success_count = sum(1 for d in details if d.status == "success")
@@ -29,17 +30,18 @@ async def upload_documents(
 
 
 @router.get("", response_model=List[DocumentInfo])
-async def list_documents():
+async def list_documents(
+    service: DocumentService = Depends(get_document_service),
+):
     """List all uploaded documents"""
-    service = DocumentService()
     return service.list_documents()
 
 
 @router.delete("")
 async def delete_documents(
-    filenames: List[str] = Query(..., description="Filenames to delete")
+    filenames: List[str] = Query(..., description="Filenames to delete"),
+    service: DocumentService = Depends(get_document_service),
 ):
     """Delete documents by filename"""
-    service = DocumentService()
     results = service.delete_documents(filenames)
     return {"success": True, "results": results}

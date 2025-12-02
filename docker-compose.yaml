@@ -130,8 +130,8 @@ services:
     ports:
       - "8080:8000"
     volumes:
-      - ./file:/app/file:ro # 只读挂载 PDF 文件
-      - ./:/workspace:ro # 只读挂载整个项目目录，便于访问配置和脚本
+      - ./app:/app/app:rw # 挂载应用代码，支持热更新
+      - ./file:/app/file:rw # 挂载文件目录，支持读写
     environment:
       QDRANT_HOST: qdrant-server
       VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1
@@ -151,5 +151,5 @@ services:
       vllm-bge-reranker:
         condition: service_healthy
       qdrant-server:
-        condition: service_started # 只等待启动，不等待健康检查
+        condition: service_started
     restart: unless-stopped

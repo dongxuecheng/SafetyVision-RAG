@@ -14,14 +14,38 @@ class HazardList(BaseModel):
     )
 
 
-class SafetyViolation(BaseModel):
-    """Safety violation model"""
+class SourceReference(BaseModel):
+    """Source document reference with location"""
+
+    filename: str = Field(description="Source document filename")
+    location: str = Field(
+        description="Location within document (e.g., 'Sheet1, Row 5' or 'Page 3')"
+    )
+
+
+class SafetyViolationLLM(BaseModel):
+    """Safety violation model for LLM structured output (without source_documents)"""
 
     hazard_id: int = Field(ge=1, description="Hazard ID")
     hazard_description: str = Field(description="Hazard description")
     recommendations: str = Field(description="Safety recommendations")
     rule_reference: str = Field(
         description="Reference to safety rules and source documents"
+    )
+
+
+class SafetyViolation(BaseModel):
+    """Complete safety violation model with source tracking"""
+
+    hazard_id: int = Field(ge=1, description="Hazard ID")
+    hazard_description: str = Field(description="Hazard description")
+    recommendations: str = Field(description="Safety recommendations")
+    rule_reference: str = Field(
+        description="Reference to safety rules and source documents"
+    )
+    source_documents: List[SourceReference] = Field(
+        default_factory=list,
+        description="List of source documents with precise locations",
     )
 
 

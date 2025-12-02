@@ -22,7 +22,13 @@ from fastapi import UploadFile, HTTPException, status
 from app.core.deps import get_llm, get_vector_store
 from app.core.config import get_settings
 from app.core.retrieval import SafetyRetriever
-from app.schemas.safety import SafetyReport, SafetyViolation, HazardList
+from app.schemas.safety import (
+    SafetyReport,
+    SafetyViolation,
+    SafetyViolationLLM,
+    HazardList,
+    SourceReference,
+)
 
 
 class AnalysisService:
@@ -37,15 +43,13 @@ class AnalysisService:
     - Comprehensive error handling
     """
 
-    # Class-level system prompt (avoids lru_cache on instance methods)
-    # Note: This is kept for backward compatibility but not actively used in per-hazard retrieval
-    SYSTEM_PROMPT = """你是安全报告生成器。根据发现的隐患和检索到的规范，生成结构化安全报告。
-
-分析要求：
-1. rule_reference 根据文档内容灵活填写（有标准编号则引用标准，无则引用原文）
-2. 如果未检索到相关规范，在 rule_reference 中说明"未找到相关规范"
-3. 严格按照 SafetyReport schema 返回结构化数据
-"""
+    # Constants for document formatting
+    MAX_DOC_LENGTH = (
+        800  # Maximum characters per document (reduced to avoid token limits)
+    )
+    MAX_CONTEXT_LENGTH = (
+        1500  # Maximum total context length (reduced to fit within token budget)
+    )
 
     def __init__(self):
         self.llm = get_llm()
@@ -58,7 +62,8 @@ class AnalysisService:
         )
         # Structured LLMs for different outputs
         self.hazards_llm = self.llm.with_structured_output(HazardList)
-        self.violation_llm = self.llm.with_structured_output(SafetyViolation)
+        # Use SafetyViolationLLM (without source_documents) for LLM generation
+        self.violation_llm = self.llm.with_structured_output(SafetyViolationLLM)
 
     async def analyze_image(self, file: UploadFile) -> SafetyReport:
         """
@@ -177,29 +182,43 @@ class AnalysisService:
             return {
                 "context": "未检索到相关规范文档。",
                 "sources": "无参考文档",
+                "source_refs": [],
             }
 
         context_parts = []
-        sources_parts = []
-        seen_files = set()
+        sources = set()  # Use set for automatic deduplication
+        source_refs = []  # Structured source references
 
         for i, doc in enumerate(docs, 1):
             # Truncate content to avoid token limits
-            content = doc.page_content[:800]
+            content = doc.page_content[: self.MAX_DOC_LENGTH]
             context_parts.append(f"[文档{i}] {content}")
 
-            # Collect unique source files
+            # Collect unique source files and structured references
             filename = doc.metadata.get("filename", "未知来源")
-            if filename not in seen_files:
-                seen_files.add(filename)
-                sheet = doc.metadata.get("sheet_name", "")
-                row = doc.metadata.get("row_number", "")
-                location = f" (工作表: {sheet}, 行: {row})" if sheet and row else ""
-                sources_parts.append(f"- {filename}{location}")
+            sheet = doc.metadata.get("sheet_name")
+            row = doc.metadata.get("row_number")
+            page = doc.metadata.get("page")
+
+            # Build location string
+            if sheet and row:
+                location = f"工作表: {sheet}, 行: {row}"
+            elif page:
+                location = f"页码: {page}"
+            else:
+                location = "位置未知"
+
+            # Add to text sources
+            location_suffix = f" ({location})" if location != "位置未知" else ""
+            sources.add(f"- {filename}{location_suffix}")
+
+            # Add to structured source references
+            source_refs.append(SourceReference(filename=filename, location=location))
 
         return {
             "context": "\n---\n".join(context_parts),
-            "sources": "\n".join(sources_parts),
+            "sources": "\n".join(sorted(sources)),  # Sort for consistency
+            "source_refs": source_refs,  # Structured references for API response
         }
 
     async def _generate_single_violation(
@@ -214,25 +233,24 @@ class AnalysisService:
 
         messages = [
             SystemMessage(
-                content="""你是安全报告生成器。为单条隐患生成 SafetyViolation。
+                content="""你是安全报告生成器。为单条隐患生成简洁的安全报告。
 
-输出要求（简洁明确）：
-1. hazard_description: 隐患的详细描述（20-50字）
-2. recommendations: 整改建议（1-3条，每条不超过30字）
-3. rule_reference: 规范引用（根据检索到的文档内容灵活填写）
+输出要求：
+1. hazard_description: 隐患详细描述（20-40字）
+2. recommendations: 整改建议（1-2条，每条20字内）
+3. rule_reference: 规范引用（简洁，50字内）
 
-- 不要编造不存在的标准编号或条款号
-- 不要添加检索文档中没有的内容
-- 必须保留来源的精确定位信息（如 Excel 的工作表名和行号,doc文档的页码等）
-
-关键原则：如实转述检索到的内容，根据文档实际格式选择合适的引用方式
+关键原则：
+- 判断文档是否与隐患相关
+- 不相关则返回："未检索到相关规范"
+- 相关则简要引用，包含文件名
+- 不要编造标准编号
 """
             ),
             HumanMessage(
                 content=f"""隐患: {hazard}
 
-相关规范:
-{formatted['context'][:1500]}
+文档: {formatted['context'][:self.MAX_CONTEXT_LENGTH]}
 
 来源: {formatted['sources']}
 """
@@ -240,26 +258,35 @@ class AnalysisService:
         ]
 
         try:
-            # Retry with increased max_tokens if needed
-            violation = await self.violation_llm.ainvoke(messages)
-            violation.hazard_id = hazard_id
+            # LLM generates SafetyViolationLLM (without source_documents)
+            llm_violation = await self.violation_llm.ainvoke(messages)
+
+            # Convert to complete SafetyViolation and add source_documents
+            violation = SafetyViolation(
+                hazard_id=hazard_id,
+                hazard_description=llm_violation.hazard_description,
+                recommendations=llm_violation.recommendations,
+                rule_reference=llm_violation.rule_reference,
+                source_documents=formatted.get("source_refs", []),
+            )
             return violation
         except Exception as e:
-            # Fallback: return minimal violation
+            # Unified error handling with fallback
             error_msg = str(e)
-            if "length limit" in error_msg or "max_tokens" in error_msg:
-                # Token limit exceeded, return simplified violation
-                return SafetyViolation(
-                    hazard_id=hazard_id,
-                    hazard_description=hazard,
-                    recommendations="1. 立即停止作业并整改\n2. 联系安全负责人检查\n3. 符合规范后方可继续",
-                    rule_reference="未找到相关规范（输出超过长度限制，请优化检索文档）",
-                )
-            else:
-                # Other errors
-                return SafetyViolation(
-                    hazard_id=hazard_id,
-                    hazard_description=hazard,
-                    recommendations="请咨询安全专家获取整改建议",
-                    rule_reference=f"未找到相关规范（检索失败: {error_msg[:100]}）",
-                )
+            is_token_limit = "length limit" in error_msg or "max_tokens" in error_msg
+
+            return SafetyViolation(
+                hazard_id=hazard_id,
+                hazard_description=hazard,
+                recommendations=(
+                    "1. 立即停止作业并整改\n2. 联系安全负责人检查\n3. 符合规范后方可继续"
+                    if is_token_limit
+                    else "请咨询安全专家获取整改建议"
+                ),
+                rule_reference=(
+                    "未找到相关规范（输出超过长度限制，请优化检索文档）"
+                    if is_token_limit
+                    else f"未找到相关规范（检索失败: {error_msg[:100]}）"
+                ),
+                source_documents=formatted.get("source_refs", []),
+            )

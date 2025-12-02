@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 200
 
+    # RAG Retrieval Settings
+    retrieval_score_threshold: float = 0.65  # Minimum similarity score for relevance
+    rerank_score_threshold: float = 0.3  # Minimum rerank score for filtering
+
     @property
     def qdrant_url(self) -> str:
         return f"http://{self.qdrant_host}:{self.qdrant_port}"

@@ -28,7 +28,7 @@ def get_llm() -> ChatOpenAI:
         api_key="not-needed",
         base_url=settings.vllm_chat_url,
         temperature=0,
-        max_tokens=2048,  # Increased for structured output (SafetyViolation generation)
+        max_tokens=4096,  # Increased to 4096 for structured output generation
     )
 
 
@@ -79,3 +79,17 @@ def get_reranker_client() -> cohere.ClientV2:
     return cohere.ClientV2(
         api_key="dummy-key", base_url=rerank_url  # vLLM doesn't validate API keys
     )
+
+
+def get_document_service():
+    """Get document service instance for dependency injection"""
+    from app.services.document_service import DocumentService
+
+    return DocumentService()
+
+
+def get_analysis_service():
+    """Get analysis service instance for dependency injection"""
+    from app.services.analysis_service import AnalysisService
+
+    return AnalysisService()

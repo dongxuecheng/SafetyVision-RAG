@@ -60,23 +60,26 @@ class SafetyRetriever:
         self,
         query: str,
         k: int = 3,
-        fetch_k: int = 10,
+        fetch_k: int = 30,
         model: str = "/model/bge-reranker-v2-m3",
+        rerank_score_threshold: float = 0.3,
     ) -> List[Document]:
         """
-        Two-stage retrieval: MMR (coarse) → Rerank (fine)
+        Two-stage retrieval: Similarity (coarse) → Rerank (fine)
 
         Args:
             query: Query text
             k: Number of final documents to return
-            fetch_k: Number of candidates to fetch (should >= k)
+            fetch_k: Number of candidates to fetch (should >= k, default 30 for better coverage)
             model: Rerank model name
+            rerank_score_threshold: Minimum rerank score to keep documents (default 0.3)
 
         Returns:
-            Reranked top_k documents
+            Reranked top_k documents filtered by score threshold
         """
-        # Stage 1: Coarse ranking - retrieve candidates with MMR
-        candidates = await self.retrieve_with_mmr(query, k=fetch_k)
+        # Stage 1: Coarse ranking - retrieve candidates with similarity search (not MMR)
+        # Use similarity instead of MMR to maximize relevance (MMR prioritizes diversity)
+        candidates = await self.retrieve_with_score(query, k=fetch_k)
 
         if not self.reranker or len(candidates) <= k:
             # No reranker or insufficient candidates, return as-is
@@ -89,36 +92,64 @@ class SafetyRetriever:
 
             # Call Rerank API
             rerank_response = self.reranker.rerank(
-                model=model, query=query, documents=documents_text, top_n=k
+                model=model,
+                query=query,
+                documents=documents_text,
+                top_n=k * 2,  # Get more candidates
             )
 
-            # Reorder original Document objects based on rerank results
-            reranked_docs = [
-                candidates[result.index] for result in rerank_response.results
-            ]
+            # Filter by rerank score threshold and reorder
+            reranked_docs = []
+            for result in rerank_response.results:
+                # Only keep documents above threshold
+                if (
+                    hasattr(result, "relevance_score")
+                    and result.relevance_score >= rerank_score_threshold
+                ):
+                    reranked_docs.append(candidates[result.index])
+                elif not hasattr(result, "relevance_score"):
+                    # Fallback: if no score attribute, keep all (backwards compatibility)
+                    reranked_docs.append(candidates[result.index])
 
-            return reranked_docs
+            # Return top k from filtered results
+            return reranked_docs[:k]
 
         except Exception as e:
             # Fallback: if rerank fails, return MMR results
             print(f"Rerank failed: {e}, falling back to MMR")
             return candidates[:k]
 
-    async def retrieve_with_fallback(self, query: str, k: int = 5) -> List[Document]:
+    async def retrieve_with_fallback(
+        self,
+        query: str,
+        k: int = 5,
+        score_threshold: float = 0.65,
+    ) -> List[Document]:
         """
-        Smart fallback: prioritize Rerank, fallback to MMR on failure
+        Smart fallback: prioritize Rerank with score filtering, fallback to similarity search
 
         Recommended for production use
+
+        Args:
+            query: Search query
+            k: Number of documents to return
+            score_threshold: Minimum similarity score for retrieval (default 0.65)
         """
         if self.reranker:
             try:
-                return await self.retrieve_with_rerank(query, k=k, fetch_k=k * 3)
+                # Use larger fetch_k for better coverage (k * 10)
+                return await self.retrieve_with_rerank(
+                    query, k=k, fetch_k=k * 10, rerank_score_threshold=0.3
+                )
             except Exception as e:
-                print(f"Rerank unavailable, falling back to MMR: {e}")
+                print(f"Rerank unavailable, falling back to similarity search: {e}")
 
-        # Fallback to MMR
+        # Fallback to similarity search with score threshold
         try:
-            return await self.retrieve_with_mmr(query, k=k)
+            return await self.retrieve_with_score(
+                query, k=k, score_threshold=score_threshold
+            )
         except Exception as e:
-            print(f"MMR failed ({e}), falling back to similarity search")
+            # Last resort: similarity without threshold
+            print(f"Similarity with threshold failed ({e}), using basic similarity")
             return await self.retrieve_with_score(query, k=k)

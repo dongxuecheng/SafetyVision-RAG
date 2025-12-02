@@ -18,15 +18,8 @@ RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制应用代码
-COPY app/ ./app/
-COPY init.sh .
-
-# 创建 file 目录
-RUN mkdir -p /app/file
-
 # 暴露 FastAPI 端口
 EXPOSE 8000
 
-# 使用初始化脚本作为入口点
-ENTRYPOINT ["/app/init.sh"]
+# 直接启动 FastAPI（依赖编排由 Docker Compose 负责）
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
