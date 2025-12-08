@@ -165,9 +165,10 @@ class AnalysisService:
         Batch retrieve documents for each hazard in parallel
 
         Each hazard gets independent retrieval for precise rule matching
+        Returns only the most relevant document (k=1)
         """
         tasks = [
-            self.retriever.retrieve_with_fallback(hazard, k=3)
+            self.retriever.retrieve_with_fallback(hazard, k=1)
             for hazard in hazards_list
         ]
         return await asyncio.gather(*tasks)
@@ -203,8 +204,10 @@ class AnalysisService:
             # Build location string
             if sheet and row:
                 location = f"工作表: {sheet}, 行: {row}"
-            elif page:
-                location = f"页码: {page}"
+            elif page is not None:
+                # PyPDFLoader uses 0-based indexing, but PDF readers show 1-based page numbers
+                # So we add 1 to match what users see in PDF viewers
+                location = f"页码: {page + 1}"
             else:
                 location = "位置未知"
 
@@ -261,13 +264,20 @@ class AnalysisService:
             # LLM generates SafetyViolationLLM (without source_documents)
             llm_violation = await self.violation_llm.ainvoke(messages)
 
-            # Convert to complete SafetyViolation and add source_documents
+            # Only add source_documents if LLM finds relevant regulations
+            # Check if rule_reference indicates "no relevant regulations found"
+            is_relevant = not any(
+                keyword in llm_violation.rule_reference
+                for keyword in ["未检索到", "未找到", "未查找到", "检索失败"]
+            )
+            
+            # Convert to complete SafetyViolation and add source_documents only if relevant
             violation = SafetyViolation(
                 hazard_id=hazard_id,
                 hazard_description=llm_violation.hazard_description,
                 recommendations=llm_violation.recommendations,
                 rule_reference=llm_violation.rule_reference,
-                source_documents=formatted.get("source_refs", []),
+                source_documents=formatted.get("source_refs", []) if is_relevant else [],
             )
             return violation
         except Exception as e:
