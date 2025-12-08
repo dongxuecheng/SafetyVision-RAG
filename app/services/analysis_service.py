@@ -270,14 +270,16 @@ class AnalysisService:
                 keyword in llm_violation.rule_reference
                 for keyword in ["未检索到", "未找到", "未查找到", "检索失败"]
             )
-            
+
             # Convert to complete SafetyViolation and add source_documents only if relevant
             violation = SafetyViolation(
                 hazard_id=hazard_id,
                 hazard_description=llm_violation.hazard_description,
                 recommendations=llm_violation.recommendations,
                 rule_reference=llm_violation.rule_reference,
-                source_documents=formatted.get("source_refs", []) if is_relevant else [],
+                source_documents=(
+                    formatted.get("source_refs", []) if is_relevant else []
+                ),
             )
             return violation
         except Exception as e:
