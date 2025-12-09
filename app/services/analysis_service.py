@@ -173,25 +173,34 @@ class AnalysisService:
 
     def _format_documents(self, docs: List[Document]) -> dict:
         """
-        Format retrieved documents into structured context
+        Format retrieved documents into structured context with scores
 
         Separates content and sources for better prompt clarity
+        Extracts similarity scores to help LLM judge relevance objectively
         """
         if not docs:
             return {
                 "context": "未检索到相关规范文档。",
                 "sources": "无参考文档",
                 "source_refs": [],
+                "max_score": 0.0,
+                "has_high_confidence": False,
             }
 
         context_parts = []
         sources = set()  # Use set for automatic deduplication
         source_refs = []  # Structured source references
+        scores = []  # Collect similarity scores
 
         for i, doc in enumerate(docs, 1):
+            # Extract similarity score from metadata
+            score = doc.metadata.get("score", 0.0)
+            scores.append(score)
+
             # Truncate content to avoid token limits
             content = doc.page_content[: self.MAX_DOC_LENGTH]
-            context_parts.append(f"[文档{i}] {content}")
+            # Add score indicator to context
+            context_parts.append(f"[文档{i}] (相似度分数: {score:.3f})\n{content}")
 
             # Collect unique source files and structured references
             filename = doc.metadata.get("filename", "未知来源")
@@ -216,10 +225,14 @@ class AnalysisService:
             # Add to structured source references
             source_refs.append(SourceReference(filename=filename, location=location))
 
+        max_score = max(scores) if scores else 0.0
+
         return {
             "context": "\n---\n".join(context_parts),
             "sources": "\n".join(sorted(sources)),  # Sort for consistency
             "source_refs": source_refs,  # Structured references for API response
+            "max_score": max_score,  # Maximum similarity score for objective judgment
+            "has_high_confidence": max_score >= 0.7,  # High confidence threshold
         }
 
     async def _generate_single_violation(
@@ -229,16 +242,59 @@ class AnalysisService:
         Generate SafetyViolation for a single hazard with its retrieved documents
 
         This ensures each hazard has precise rule_reference from relevant docs
+        Uses hard threshold (0.4) to filter low-quality retrievals objectively
         """
         formatted = self._format_documents(docs)
+
+        # Hard threshold check: if retrieval score < 0.4, directly return as irrelevant
+        # This prevents LLM from trying to extract rules from low-quality matches
+        if formatted["max_score"] < 0.4:
+            default_category = (
+                self.settings.hazard_categories[-1]
+                if self.settings.hazard_categories
+                else "其他"
+            )
+            default_level = (
+                self.settings.hazard_levels[0]
+                if self.settings.hazard_levels
+                else "一般隐患"
+            )
+            return SafetyViolation(
+                hazard_id=hazard_id,
+                hazard_description=hazard,
+                hazard_category=default_category,
+                hazard_level=default_level,
+                recommendations="建议咨询安全专家获取专业整改意见",
+                rule_reference=f"未检索到相关规范（检索相似度过低: {formatted['max_score']:.3f}）",
+                source_documents=[],
+            )
 
         # Get hazard classification settings from config
         categories_list = "、".join(self.settings.hazard_categories)
         levels_list = "\n   ".join(self.settings.hazard_levels)
 
+        # Build confidence guidance based on score
+        max_score = formatted["max_score"]
+        if max_score >= 0.7:
+            confidence_level = "高置信度 (≥0.7)"
+            confidence_guidance = "文档很可能与隐患直接相关，仔细提取规范条款"
+        elif max_score >= 0.5:
+            confidence_level = "中等置信度 (0.5-0.7)"
+            confidence_guidance = "文档可能相关，需仔细判断关键词匹配度和场景一致性"
+        else:
+            confidence_level = "较低置信度 (0.4-0.5)"
+            confidence_guidance = (
+                "文档相关性存疑，务必严格检查关键词和场景匹配，谨慎引用"
+            )
+
         messages = [
             SystemMessage(
                 content=f"""你是安全报告生成器。为单条隐患生成简洁的安全报告。
+
+【检索质量评估】
+当前检索相似度分数: {max_score:.3f}
+置信度级别: {confidence_level}
+判断指导: {confidence_guidance}
 
 输出要求：
 1. hazard_description: 隐患详细描述（20-40字）
@@ -253,14 +309,35 @@ class AnalysisService:
    - 然后是具体条款，如果原始文档有
    - 最后是该条款的相关内容摘要，如果原始文档有
 
-关键原则：
-- 判断文档是否与隐患相关
-- 不相关则返回："未检索到相关规范"
-- 相关则必须从文档原文中提取完整的条款标题，不要简化或省略任何部分
-- 严格遵循文档中的原始格式，包括书名号、括号、标点符号等
+【相关性判断标准】（务必严格遵守）
+
+判定为"相关"的条件（需满足以下任一条件）：
+1. 文档明确提到隐患的核心关键词且有具体规定/条款
+2. 文档的适用场景、对象与隐患完全匹配
+3. 文档的规定能直接用于该隐患的整改依据
+
+判定为"不相关"的条件（满足以下任一条件）：
+1. 文档完全不包含隐患的核心关键词
+2. 文档只是领域相近但没有针对性规定
+3. 文档场景与隐患不符
+4. 文档内容过于宽泛，无法提供具体整改指导
+
+【判断流程】：
+1. 提取隐患的核心关键词
+2. 检查文档中是否出现这些关键词或其同义词
+3. 检查文档场景是否与隐患场景一致
+4. 如果关键词匹配且场景一致且有具体规定 → 相关
+5. 否则 → 返回"未检索到相关规范"
+
+【特别注意】：
+- 当相似度分数 < 0.5 时，更需谨慎判断，优先选择"不相关"
 - 不要编造或臆造不存在的规范名称
+- 相关则必须从文档原文中提取完整的条款标题，不要简化或省略
+- 严格遵循文档中的原始格式，包括书名号、括号、标点符号等
 - hazard_category 必须从给定列表中精确选择，字符完全匹配
 - hazard_level 必须从给定列表中精确选择，包含完整的级别名称
+
+如果判定文档不相关，rule_reference 字段返回："未检索到相关规范"
 """
             ),
             HumanMessage(
@@ -284,6 +361,12 @@ class AnalysisService:
                 for keyword in ["未检索到", "未找到", "未查找到", "检索失败"]
             )
 
+            # Standardize "not found" message format with similarity score
+            rule_reference = llm_violation.rule_reference
+            if not is_relevant:
+                # Replace generic message with score-enriched format for consistency
+                rule_reference = f"未检索到相关规范（检索相似度: {formatted['max_score']:.3f}，LLM判断不相关）"
+
             # Convert to complete SafetyViolation and add source_documents only if relevant
             violation = SafetyViolation(
                 hazard_id=hazard_id,
@@ -291,7 +374,7 @@ class AnalysisService:
                 hazard_category=llm_violation.hazard_category,
                 hazard_level=llm_violation.hazard_level,
                 recommendations=llm_violation.recommendations,
-                rule_reference=llm_violation.rule_reference,
+                rule_reference=rule_reference,
                 source_documents=(
                     formatted.get("source_refs", []) if is_relevant else []
                 ),
@@ -325,9 +408,9 @@ class AnalysisService:
                     else "请咨询安全专家获取整改建议"
                 ),
                 rule_reference=(
-                    "未找到相关规范（输出超过长度限制，请优化检索文档）"
+                    f"未检索到相关规范（检索相似度: {formatted['max_score']:.3f}，LLM生成失败: 输出超长度限制）"
                     if is_token_limit
-                    else f"未找到相关规范（检索失败: {error_msg[:100]}）"
+                    else f"未检索到相关规范（检索相似度: {formatted['max_score']:.3f}，LLM生成失败: {error_msg[:80]}）"
                 ),
-                source_documents=formatted.get("source_refs", []),
+                source_documents=[],  # Error case should not include source documents
             )

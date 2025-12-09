@@ -40,21 +40,27 @@ class SafetyRetriever:
         self, query: str, k: int = 5, score_threshold: Optional[float] = None
     ) -> List[Document]:
         """
-        Retrieve with similarity scores
+        Retrieve with similarity scores and store them in document metadata
 
         Optionally filter by minimum score threshold
         """
-        retriever = self.vector_store.as_retriever(
-            search_type=(
-                "similarity_score_threshold" if score_threshold else "similarity"
-            ),
-            search_kwargs=(
-                {"k": k, "score_threshold": score_threshold}
-                if score_threshold
-                else {"k": k}
-            ),
-        )
-        return await retriever.ainvoke(query)
+        # Use similarity_search_with_score to get scores
+        if score_threshold:
+            results = await self.vector_store.asimilarity_search_with_score(
+                query, k=k, score_threshold=score_threshold
+            )
+        else:
+            results = await self.vector_store.asimilarity_search_with_score(
+                query, k=k
+            )
+        
+        # Store scores in document metadata
+        docs_with_scores = []
+        for doc, score in results:
+            doc.metadata["score"] = score
+            docs_with_scores.append(doc)
+        
+        return docs_with_scores
 
     async def retrieve_with_rerank(
         self,
@@ -106,7 +112,10 @@ class SafetyRetriever:
                     hasattr(result, "relevance_score")
                     and result.relevance_score >= rerank_score_threshold
                 ):
-                    reranked_docs.append(candidates[result.index])
+                    doc = candidates[result.index]
+                    # Store rerank score in metadata for later use
+                    doc.metadata["score"] = result.relevance_score
+                    reranked_docs.append(doc)
                 elif not hasattr(result, "relevance_score"):
                     # Fallback: if no score attribute, keep all (backwards compatibility)
                     reranked_docs.append(candidates[result.index])
