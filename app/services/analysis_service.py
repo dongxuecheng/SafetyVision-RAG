@@ -302,11 +302,23 @@ class AnalysisService:
             error_msg = str(e)
             is_token_limit = "length limit" in error_msg or "max_tokens" in error_msg
 
+            # Use default values from config
+            default_category = (
+                self.settings.hazard_categories[-1]
+                if self.settings.hazard_categories
+                else "其他"
+            )
+            default_level = (
+                self.settings.hazard_levels[0]
+                if self.settings.hazard_levels
+                else "一般隐患"
+            )
+
             return SafetyViolation(
                 hazard_id=hazard_id,
                 hazard_description=hazard,
-                hazard_category="其他伤害",
-                hazard_level="C级-一般隐患",
+                hazard_category=default_category,
+                hazard_level=default_level,
                 recommendations=(
                     "1. 立即停止作业并整改\n2. 联系安全负责人检查\n3. 符合规范后方可继续"
                     if is_token_limit

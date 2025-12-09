@@ -2,28 +2,8 @@
 Pydantic schemas for API request/response models
 """
 
-from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
-
-# Hazard classification types - must match config.py definitions
-HazardCategory = Literal[
-    "高处坠落",
-    "物体打击",
-    "机械伤害",
-    "起重伤害",
-    "触电",
-    "坍塌",
-    "火灾",
-    "中毒窒息",
-    "其他伤害",
-]
-
-HazardLevel = Literal[
-    "A级-重大隐患",
-    "B级-较大隐患",
-    "C级-一般隐患",
-    "D级-轻微隐患",
-]
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Optional
 
 
 class HazardList(BaseModel):
@@ -48,12 +28,38 @@ class SafetyViolationLLM(BaseModel):
 
     hazard_id: int = Field(ge=1, description="Hazard ID")
     hazard_description: str = Field(description="Hazard description")
-    hazard_category: HazardCategory = Field(description="Hazard category")
-    hazard_level: HazardLevel = Field(description="Hazard level")
+    hazard_category: str = Field(
+        description="Hazard category (validated against config.py)"
+    )
+    hazard_level: str = Field(description="Hazard level (validated against config.py)")
     recommendations: str = Field(description="Safety recommendations")
     rule_reference: str = Field(
         description="Reference to safety rules and source documents"
     )
+
+    @field_validator("hazard_category")
+    @classmethod
+    def validate_category(cls, v: str) -> str:
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        if v not in settings.hazard_categories:
+            raise ValueError(
+                f"hazard_category must be one of {settings.hazard_categories}, got '{v}'"
+            )
+        return v
+
+    @field_validator("hazard_level")
+    @classmethod
+    def validate_level(cls, v: str) -> str:
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        if v not in settings.hazard_levels:
+            raise ValueError(
+                f"hazard_level must be one of {settings.hazard_levels}, got '{v}'"
+            )
+        return v
 
 
 class SafetyViolation(BaseModel):
@@ -61,8 +67,10 @@ class SafetyViolation(BaseModel):
 
     hazard_id: int = Field(ge=1, description="Hazard ID")
     hazard_description: str = Field(description="Hazard description")
-    hazard_category: HazardCategory = Field(description="Hazard category")
-    hazard_level: HazardLevel = Field(description="Hazard level")
+    hazard_category: str = Field(
+        description="Hazard category (validated against config.py)"
+    )
+    hazard_level: str = Field(description="Hazard level (validated against config.py)")
     recommendations: str = Field(description="Safety recommendations")
     rule_reference: str = Field(
         description="Reference to safety rules and source documents"
@@ -71,6 +79,30 @@ class SafetyViolation(BaseModel):
         default_factory=list,
         description="List of source documents with precise locations",
     )
+
+    @field_validator("hazard_category")
+    @classmethod
+    def validate_category(cls, v: str) -> str:
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        if v not in settings.hazard_categories:
+            raise ValueError(
+                f"hazard_category must be one of {settings.hazard_categories}, got '{v}'"
+            )
+        return v
+
+    @field_validator("hazard_level")
+    @classmethod
+    def validate_level(cls, v: str) -> str:
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        if v not in settings.hazard_levels:
+            raise ValueError(
+                f"hazard_level must be one of {settings.hazard_levels}, got '{v}'"
+            )
+        return v
 
 
 class SafetyReport(BaseModel):
