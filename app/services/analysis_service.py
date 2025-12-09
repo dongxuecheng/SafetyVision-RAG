@@ -12,7 +12,6 @@ Implements RAG following LangChain v1.0+ best practices:
 import base64
 import asyncio
 from typing import List
-from uuid import uuid4
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.documents import Document
@@ -112,7 +111,6 @@ class AnalysisService:
 
         # Step 4: Assemble final report
         report = SafetyReport(
-            report_id=str(uuid4()),
             violations=violations,
         )
 
@@ -234,20 +232,35 @@ class AnalysisService:
         """
         formatted = self._format_documents(docs)
 
+        # Get hazard classification settings from config
+        categories_list = "、".join(self.settings.hazard_categories)
+        levels_list = "\n   ".join(self.settings.hazard_levels)
+
         messages = [
             SystemMessage(
-                content="""你是安全报告生成器。为单条隐患生成简洁的安全报告。
+                content=f"""你是安全报告生成器。为单条隐患生成简洁的安全报告。
 
 输出要求：
 1. hazard_description: 隐患详细描述（20-40字）
-2. recommendations: 整改建议（1-2条，每条20字内）
-3. rule_reference: 规范引用（简洁，50字内）
+2. hazard_category: 隐患类别，**必须严格从以下列表中选择一个，不允许任何变体**：
+   {categories_list}
+3. hazard_level: 隐患级别，**必须严格从以下列表中选择一个，完整返回**：
+   {levels_list}
+4. recommendations: 整改建议（1-2条，每条20字内）
+5. rule_reference: 规范引用，格式要求：
+   - 必须包含完整的规范标题,如果原始文档有
+   - 必须包含规范编号，如果原始文档有
+   - 然后是具体条款，如果原始文档有
+   - 最后是该条款的相关内容摘要，如果原始文档有
 
 关键原则：
 - 判断文档是否与隐患相关
 - 不相关则返回："未检索到相关规范"
-- 相关则简要引用，包含文件名
-- 不要编造标准编号
+- 相关则必须从文档原文中提取完整的条款标题，不要简化或省略任何部分
+- 严格遵循文档中的原始格式，包括书名号、括号、标点符号等
+- 不要编造或臆造不存在的规范名称
+- hazard_category 必须从给定列表中精确选择，字符完全匹配
+- hazard_level 必须从给定列表中精确选择，包含完整的级别名称
 """
             ),
             HumanMessage(
@@ -275,6 +288,8 @@ class AnalysisService:
             violation = SafetyViolation(
                 hazard_id=hazard_id,
                 hazard_description=llm_violation.hazard_description,
+                hazard_category=llm_violation.hazard_category,
+                hazard_level=llm_violation.hazard_level,
                 recommendations=llm_violation.recommendations,
                 rule_reference=llm_violation.rule_reference,
                 source_documents=(
@@ -290,6 +305,8 @@ class AnalysisService:
             return SafetyViolation(
                 hazard_id=hazard_id,
                 hazard_description=hazard,
+                hazard_category="其他伤害",
+                hazard_level="C级-一般隐患",
                 recommendations=(
                     "1. 立即停止作业并整改\n2. 联系安全负责人检查\n3. 符合规范后方可继续"
                     if is_token_limit

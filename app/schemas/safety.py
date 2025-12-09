@@ -3,7 +3,27 @@ Pydantic schemas for API request/response models
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Literal
+
+# Hazard classification types - must match config.py definitions
+HazardCategory = Literal[
+    "高处坠落",
+    "物体打击",
+    "机械伤害",
+    "起重伤害",
+    "触电",
+    "坍塌",
+    "火灾",
+    "中毒窒息",
+    "其他伤害",
+]
+
+HazardLevel = Literal[
+    "A级-重大隐患",
+    "B级-较大隐患",
+    "C级-一般隐患",
+    "D级-轻微隐患",
+]
 
 
 class HazardList(BaseModel):
@@ -28,6 +48,8 @@ class SafetyViolationLLM(BaseModel):
 
     hazard_id: int = Field(ge=1, description="Hazard ID")
     hazard_description: str = Field(description="Hazard description")
+    hazard_category: HazardCategory = Field(description="Hazard category")
+    hazard_level: HazardLevel = Field(description="Hazard level")
     recommendations: str = Field(description="Safety recommendations")
     rule_reference: str = Field(
         description="Reference to safety rules and source documents"
@@ -39,6 +61,8 @@ class SafetyViolation(BaseModel):
 
     hazard_id: int = Field(ge=1, description="Hazard ID")
     hazard_description: str = Field(description="Hazard description")
+    hazard_category: HazardCategory = Field(description="Hazard category")
+    hazard_level: HazardLevel = Field(description="Hazard level")
     recommendations: str = Field(description="Safety recommendations")
     rule_reference: str = Field(
         description="Reference to safety rules and source documents"
@@ -52,7 +76,6 @@ class SafetyViolation(BaseModel):
 class SafetyReport(BaseModel):
     """Safety analysis report"""
 
-    report_id: str = Field(description="Report ID")
     violations: List[SafetyViolation] = Field(description="List of safety violations")
 
 

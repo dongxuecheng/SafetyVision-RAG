@@ -4,6 +4,7 @@ Application configuration using Pydantic Settings
 
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import List
 
 
 class Settings(BaseSettings):
@@ -42,6 +43,26 @@ class Settings(BaseSettings):
     # RAG Retrieval Settings
     retrieval_score_threshold: float = 0.65  # Minimum similarity score for relevance
     rerank_score_threshold: float = 0.3  # Minimum rerank score for filtering
+
+    # Hazard Classification Settings
+    hazard_categories: List[str] = [
+        "高处坠落",
+        "物体打击",
+        "机械伤害",
+        "起重伤害",
+        "触电",
+        "坍塌",
+        "火灾",
+        "中毒窒息",
+        "其他伤害",
+    ]
+
+    hazard_levels: List[str] = [
+        "A级-重大隐患",
+        "B级-较大隐患",
+        "C级-一般隐患",
+        "D级-轻微隐患",
+    ]
 
     @property
     def qdrant_url(self) -> str:
