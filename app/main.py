@@ -13,8 +13,8 @@ from app.api.routes import documents, analysis
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler"""
-    # Startup
-    ensure_collection()
+    # Startup: ensure all collections exist
+    ensure_collection("all")  # Create both regulations and hazard_db collections
     yield
     # Shutdown
     get_qdrant_client().close()

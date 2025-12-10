@@ -27,8 +27,8 @@ def get_llm() -> ChatOpenAI:
         model_name=settings.vllm_model_name,
         api_key="not-needed",
         base_url=settings.vllm_chat_url,
-        temperature=0,
-        max_tokens=4096,  # Increased to 4096 for structured output generation
+        temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
     )
 
 
@@ -43,27 +43,64 @@ def get_embeddings() -> OpenAIEmbeddings:
     )
 
 
-def get_vector_store() -> QdrantVectorStore:
-    """Get vector store instance"""
+def get_vector_store(collection_type: str = "regulations") -> QdrantVectorStore:
+    """Get vector store instance for specific collection type
+
+    Args:
+        collection_type: Type of collection - 'regulations' or 'hazard_db'
+
+    Returns:
+        QdrantVectorStore instance
+    """
     settings = get_settings()
+
+    # Map collection type to collection name
+    collection_map = {
+        "regulations": settings.qdrant_collection_regulations,
+        "hazard_db": settings.qdrant_collection_hazard_db,
+    }
+
+    collection_name = collection_map.get(
+        collection_type, settings.qdrant_collection_regulations
+    )
+
     return QdrantVectorStore(
         client=get_qdrant_client(),
-        collection_name=settings.qdrant_collection,
+        collection_name=collection_name,
         embedding=get_embeddings(),
     )
 
 
-def ensure_collection() -> None:
-    """Ensure Qdrant collection exists"""
+def ensure_collection(collection_type: str = "all") -> None:
+    """Ensure Qdrant collection(s) exist
+
+    Args:
+        collection_type: 'all', 'regulations', or 'hazard_db'
+    """
     settings = get_settings()
     client = get_qdrant_client()
-    try:
-        client.get_collection(settings.qdrant_collection)
-    except:
-        client.create_collection(
-            collection_name=settings.qdrant_collection,
-            vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
-        )
+
+    # Determine which collections to create
+    collections_to_create = []
+    if collection_type == "all":
+        collections_to_create = [
+            settings.qdrant_collection_regulations,
+            settings.qdrant_collection_hazard_db,
+        ]
+    elif collection_type == "regulations":
+        collections_to_create = [settings.qdrant_collection_regulations]
+    elif collection_type == "hazard_db":
+        collections_to_create = [settings.qdrant_collection_hazard_db]
+
+    # Create collections if they don't exist
+    for collection_name in collections_to_create:
+        try:
+            client.get_collection(collection_name)
+        except:
+            client.create_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
+            )
 
 
 @lru_cache()

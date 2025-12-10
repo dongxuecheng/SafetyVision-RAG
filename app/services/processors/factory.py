@@ -8,6 +8,7 @@ from langchain_core.documents import Document
 from .pdf import PDFProcessor
 from .word import WordProcessor, LegacyWordProcessor
 from .excel import ExcelProcessor, LegacyExcelProcessor
+from .markdown import MarkdownProcessor
 
 
 class DocumentProcessorFactory:
@@ -35,12 +36,16 @@ class DocumentProcessorFactory:
             return ExcelProcessor.process(file_path, metadata)
         elif ext == ".xls":
             return LegacyExcelProcessor.process(file_path, metadata)
+        elif ext in [".md", ".markdown"]:
+            return MarkdownProcessor.process(
+                file_path, metadata, chunk_size, chunk_overlap
+            )
         else:
             raise ValueError(
-                f"不支持的文件类型: {ext}。支持的格式: .pdf, .docx, .doc, .xlsx, .xls"
+                f"不支持的文件类型: {ext}。支持的格式: .pdf, .docx, .doc, .xlsx, .xls, .md, .markdown"
             )
 
     @staticmethod
     def get_supported_extensions() -> List[str]:
         """Get list of supported file extensions"""
-        return [".pdf", ".docx", ".doc", ".xlsx", ".xls"]
+        return [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".md", ".markdown"]

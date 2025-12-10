@@ -4,6 +4,7 @@ from .factory import DocumentProcessorFactory
 from .pdf import PDFProcessor
 from .word import WordProcessor, LegacyWordProcessor
 from .excel import ExcelProcessor, LegacyExcelProcessor
+from .markdown import MarkdownProcessor
 
 __all__ = [
     "DocumentProcessorFactory",
@@ -12,4 +13,5 @@ __all__ = [
     "LegacyWordProcessor",
     "ExcelProcessor",
     "LegacyExcelProcessor",
+    "MarkdownProcessor",
 ]

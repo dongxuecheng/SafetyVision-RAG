@@ -15,7 +15,6 @@ from typing import List
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.documents import Document
-from langchain_core.runnables import chain
 from fastapi import UploadFile, HTTPException, status
 
 from app.core.deps import get_llm, get_vector_store
@@ -36,29 +35,34 @@ class AnalysisService:
 
     Implements modern LangChain v1.0+ patterns:
     - with_structured_output for type-safe Pydantic responses
-    - Modular retrieval with multiple strategies (MMR, similarity)
-    - @chain decorator for cleaner composition
+    - Modular retrieval with rerank and similarity strategies
     - Proper async/await throughout
     - Comprehensive error handling
     """
 
-    # Constants for document formatting
-    MAX_DOC_LENGTH = (
-        800  # Maximum characters per document (reduced to avoid token limits)
-    )
-    MAX_CONTEXT_LENGTH = (
-        1500  # Maximum total context length (reduced to fit within token budget)
-    )
-
     def __init__(self):
         self.llm = get_llm()
         self.settings = get_settings()
+
+        # Load formatting constants from config
+        self.MAX_DOC_LENGTH = self.settings.max_doc_length
+        self.MAX_CONTEXT_LENGTH = self.settings.max_context_length
         # Initialize retriever with Rerank support
         from app.core.deps import get_reranker_client
 
-        self.retriever = SafetyRetriever(
-            get_vector_store(), reranker_client=get_reranker_client()
+        # Primary retriever: regulations collection (PDF/Markdown/Word)
+        self.regulations_retriever = SafetyRetriever(
+            get_vector_store("regulations"), reranker_client=get_reranker_client()
         )
+
+        # Secondary retriever: hazard database collection (Excel)
+        self.hazard_db_retriever = SafetyRetriever(
+            get_vector_store("hazard_db"), reranker_client=get_reranker_client()
+        )
+
+        # Backward compatibility
+        self.retriever = self.regulations_retriever
+
         # Structured LLMs for different outputs
         self.hazards_llm = self.llm.with_structured_output(HazardList)
         # Use SafetyViolationLLM (without source_documents) for LLM generation
@@ -160,16 +164,44 @@ class AnalysisService:
         self, hazards_list: List[str]
     ) -> List[List[Document]]:
         """
-        Batch retrieve documents for each hazard in parallel
+        Multi-collection retrieval strategy:
+        1. Primary: regulations collection (PDF/Markdown/Word) - k=3
+        2. Fallback: hazard_db collection (Excel) - only if regulations insufficient
 
-        Each hazard gets independent retrieval for precise rule matching
-        Returns only the most relevant document (k=1)
+        This ensures Excel data doesn't pollute regulation-based retrieval
         """
-        tasks = [
-            self.retriever.retrieve_with_fallback(hazard, k=1)
-            for hazard in hazards_list
-        ]
-        return await asyncio.gather(*tasks)
+        all_results = []
+
+        for hazard in hazards_list:
+            # Step 1: Try regulations collection first (higher quality)
+            regulations_docs = await self.regulations_retriever.retrieve_with_fallback(
+                hazard,
+                k=self.settings.regulations_retrieval_k,
+                score_threshold=self.settings.regulations_score_threshold,
+            )
+
+            # Step 2: Check if regulations results are sufficient
+            # If we have enough high-quality docs, use them directly
+            if (
+                regulations_docs
+                and len(regulations_docs)
+                >= self.settings.regulations_min_sufficient_docs
+            ):
+                all_results.append(regulations_docs)
+                continue
+
+            # Step 3: Regulations insufficient - supplement with hazard_db
+            hazard_db_docs = await self.hazard_db_retriever.retrieve_with_fallback(
+                hazard,
+                k=self.settings.hazard_db_retrieval_k,
+                score_threshold=self.settings.hazard_db_score_threshold,
+            )
+
+            # Combine: regulations (higher priority) + hazard_db (supplementary)
+            combined_docs = regulations_docs + hazard_db_docs
+            all_results.append(combined_docs[: self.settings.max_combined_docs])
+
+        return all_results
 
     def _format_documents(self, docs: List[Document]) -> dict:
         """
@@ -205,16 +237,22 @@ class AnalysisService:
             # Collect unique source files and structured references
             filename = doc.metadata.get("filename", "未知来源")
             sheet = doc.metadata.get("sheet_name")
-            row = doc.metadata.get("row_number")
+            row_range = doc.metadata.get("row_range")  # New: batch row range
+            row = doc.metadata.get("row_number")  # Old: single row (fallback)
             page = doc.metadata.get("page")
+            section = doc.metadata.get("section")
 
             # Build location string
-            if sheet and row:
-                location = f"工作表: {sheet}, 行: {row}"
+            if sheet and (row_range or row):
+                # Excel: prefer row_range (batch), fallback to row_number (legacy)
+                row_info = row_range if row_range else f"{row}"
+                location = f"工作表: {sheet}, 行: {row_info}"
             elif page is not None:
                 # PyPDFLoader uses 0-based indexing, but PDF readers show 1-based page numbers
                 # So we add 1 to match what users see in PDF viewers
                 location = f"页码: {page + 1}"
+            elif section:
+                location = f"章节: {section}"
             else:
                 location = "位置未知"
 
@@ -246,9 +284,9 @@ class AnalysisService:
         """
         formatted = self._format_documents(docs)
 
-        # Hard threshold check: if retrieval score < 0.4, directly return as irrelevant
+        # Hard threshold check: if retrieval score below minimum, directly return as irrelevant
         # This prevents LLM from trying to extract rules from low-quality matches
-        if formatted["max_score"] < 0.4:
+        if formatted["max_score"] < self.settings.min_retrieval_score:
             default_category = (
                 self.settings.hazard_categories[-1]
                 if self.settings.hazard_categories
@@ -275,69 +313,37 @@ class AnalysisService:
 
         # Build confidence guidance based on score
         max_score = formatted["max_score"]
-        if max_score >= 0.7:
-            confidence_level = "高置信度 (≥0.7)"
+        if max_score >= self.settings.high_confidence_threshold:
+            confidence_level = f"高置信度 (≥{self.settings.high_confidence_threshold})"
             confidence_guidance = "文档很可能与隐患直接相关，仔细提取规范条款"
-        elif max_score >= 0.5:
-            confidence_level = "中等置信度 (0.5-0.7)"
+        elif max_score >= self.settings.medium_confidence_threshold:
+            confidence_level = f"中等置信度 ({self.settings.medium_confidence_threshold}-{self.settings.high_confidence_threshold})"
             confidence_guidance = "文档可能相关，需仔细判断关键词匹配度和场景一致性"
         else:
-            confidence_level = "较低置信度 (0.4-0.5)"
+            confidence_level = f"较低置信度 ({self.settings.min_retrieval_score}-{self.settings.medium_confidence_threshold})"
             confidence_guidance = (
                 "文档相关性存疑，务必严格检查关键词和场景匹配，谨慎引用"
             )
 
         messages = [
             SystemMessage(
-                content=f"""你是安全报告生成器。为单条隐患生成简洁的安全报告。
+                content=f"""安全报告生成器。检索相似度: {max_score:.3f}，{confidence_level}。
 
-【检索质量评估】
-当前检索相似度分数: {max_score:.3f}
-置信度级别: {confidence_level}
-判断指导: {confidence_guidance}
+输出字段（严格遵守长度限制）：
+1. hazard_description: 20-40字
+2. hazard_category: 必须精确选择：{categories_list}
+3. hazard_level: 必须精确选择：{levels_list}
+4. recommendations: ≤200字
+   - 文档有整改措施时用"[文档依据]"
+   - 否则用"[AI建议]"
+5. rule_reference: ≤300字
+   格式：《规范名》(编号) 第X条：核心要求(≤100字)
+   禁止输出冗长原文段落
 
-输出要求：
-1. hazard_description: 隐患详细描述（20-40字）
-2. hazard_category: 隐患类别，**必须严格从以下列表中选择一个，不允许任何变体**：
-   {categories_list}
-3. hazard_level: 隐患级别，**必须严格从以下列表中选择一个，完整返回**：
-   {levels_list}
-4. recommendations: 整改建议（1-2条，每条20字内）
-5. rule_reference: 规范引用，格式要求：
-   - 必须包含完整的规范标题,如果原始文档有
-   - 必须包含规范编号，如果原始文档有
-   - 然后是具体条款，如果原始文档有
-   - 最后是该条款的相关内容摘要，如果原始文档有
-
-【相关性判断标准】（务必严格遵守）
-
-判定为"相关"的条件（需满足以下任一条件）：
-1. 文档明确提到隐患的核心关键词且有具体规定/条款
-2. 文档的适用场景、对象与隐患完全匹配
-3. 文档的规定能直接用于该隐患的整改依据
-
-判定为"不相关"的条件（满足以下任一条件）：
-1. 文档完全不包含隐患的核心关键词
-2. 文档只是领域相近但没有针对性规定
-3. 文档场景与隐患不符
-4. 文档内容过于宽泛，无法提供具体整改指导
-
-【判断流程】：
-1. 提取隐患的核心关键词
-2. 检查文档中是否出现这些关键词或其同义词
-3. 检查文档场景是否与隐患场景一致
-4. 如果关键词匹配且场景一致且有具体规定 → 相关
-5. 否则 → 返回"未检索到相关规范"
-
-【特别注意】：
-- 当相似度分数 < 0.5 时，更需谨慎判断，优先选择"不相关"
-- 不要编造或臆造不存在的规范名称
-- 相关则必须从文档原文中提取完整的条款标题，不要简化或省略
-- 严格遵循文档中的原始格式，包括书名号、括号、标点符号等
-- hazard_category 必须从给定列表中精确选择，字符完全匹配
-- hazard_level 必须从给定列表中精确选择，包含完整的级别名称
-
-如果判定文档不相关，rule_reference 字段返回："未检索到相关规范"
+相关性判断：
+- 相关：文档有核心关键词+具体条款+场景匹配
+- 不相关：无关键词/场景不符/内容宽泛 → 返回"未检索到相关规范"
+- 分数<0.3时优先判断为不相关
 """
             ),
             HumanMessage(
@@ -403,9 +409,9 @@ class AnalysisService:
                 hazard_category=default_category,
                 hazard_level=default_level,
                 recommendations=(
-                    "1. 立即停止作业并整改\n2. 联系安全负责人检查\n3. 符合规范后方可继续"
+                    "[AI建议] 1. 立即停止作业并整改\n[AI建议] 2. 联系安全负责人检查\n[AI建议] 3. 符合规范后方可继续"
                     if is_token_limit
-                    else "请咨询安全专家获取整改建议"
+                    else "[AI建议] 请咨询安全专家获取整改建议"
                 ),
                 rule_reference=(
                     f"未检索到相关规范（检索相似度: {formatted['max_score']:.3f}，LLM生成失败: 输出超长度限制）"

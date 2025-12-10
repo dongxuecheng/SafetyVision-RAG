@@ -16,26 +16,6 @@ class SafetyRetriever:
         self.vector_store = vector_store
         self.reranker = reranker_client
 
-    async def retrieve_with_mmr(
-        self, query: str, k: int = 5, fetch_k: int = 10, lambda_mult: float = 0.7
-    ) -> List[Document]:
-        """
-        Retrieve using Maximal Marginal Relevance
-
-        MMR balances relevance and diversity to avoid redundant results
-
-        Args:
-            query: Search query
-            k: Number of documents to return
-            fetch_k: Number of candidates to fetch before MMR selection
-            lambda_mult: Balance between relevance (1.0) and diversity (0.0)
-        """
-        retriever = self.vector_store.as_retriever(
-            search_type="mmr",
-            search_kwargs={"k": k, "fetch_k": fetch_k, "lambda_mult": lambda_mult},
-        )
-        return await retriever.ainvoke(query)
-
     async def retrieve_with_score(
         self, query: str, k: int = 5, score_threshold: Optional[float] = None
     ) -> List[Document]:
@@ -50,16 +30,14 @@ class SafetyRetriever:
                 query, k=k, score_threshold=score_threshold
             )
         else:
-            results = await self.vector_store.asimilarity_search_with_score(
-                query, k=k
-            )
-        
+            results = await self.vector_store.asimilarity_search_with_score(query, k=k)
+
         # Store scores in document metadata
         docs_with_scores = []
         for doc, score in results:
             doc.metadata["score"] = score
             docs_with_scores.append(doc)
-        
+
         return docs_with_scores
 
     async def retrieve_with_rerank(
@@ -83,8 +61,7 @@ class SafetyRetriever:
         Returns:
             Reranked top_k documents filtered by score threshold
         """
-        # Stage 1: Coarse ranking - retrieve candidates with similarity search (not MMR)
-        # Use similarity instead of MMR to maximize relevance (MMR prioritizes diversity)
+        # Stage 1: Coarse ranking - retrieve candidates with similarity search
         candidates = await self.retrieve_with_score(query, k=fetch_k)
 
         if not self.reranker or len(candidates) <= k:
@@ -96,12 +73,17 @@ class SafetyRetriever:
             # Extract document content
             documents_text = [doc.page_content for doc in candidates]
 
+            # Import settings for top_n multiplier
+            from app.core.config import get_settings
+
+            settings = get_settings()
+
             # Call Rerank API
             rerank_response = self.reranker.rerank(
                 model=model,
                 query=query,
                 documents=documents_text,
-                top_n=k * 2,  # Get more candidates
+                top_n=k * settings.rerank_top_n_multiplier,
             )
 
             # Filter by rerank score threshold and reorder
@@ -124,8 +106,8 @@ class SafetyRetriever:
             return reranked_docs[:k]
 
         except Exception as e:
-            # Fallback: if rerank fails, return MMR results
-            print(f"Rerank failed: {e}, falling back to MMR")
+            # Fallback: if rerank fails, return similarity results
+            print(f"Rerank failed: {e}, falling back to similarity")
             return candidates[:k]
 
     async def retrieve_with_fallback(
@@ -146,9 +128,17 @@ class SafetyRetriever:
         """
         if self.reranker:
             try:
-                # Use larger fetch_k for better coverage (k * 10)
+                # Import settings to get fetch_k multiplier
+                from app.core.config import get_settings
+
+                settings = get_settings()
+
+                # Use configurable fetch_k for better coverage
                 return await self.retrieve_with_rerank(
-                    query, k=k, fetch_k=k * 10, rerank_score_threshold=0.3
+                    query,
+                    k=k,
+                    fetch_k=k * settings.fetch_k_multiplier,
+                    rerank_score_threshold=settings.rerank_score_threshold,
                 )
             except Exception as e:
                 print(f"Rerank unavailable, falling back to similarity search: {e}")

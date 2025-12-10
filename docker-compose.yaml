@@ -30,7 +30,7 @@ services:
       - --gpu-memory-utilization
       - "0.7"
       - --max-model-len
-      - "5840"
+      - "8192"
     networks:
       - ai-network
     restart: unless-stopped
