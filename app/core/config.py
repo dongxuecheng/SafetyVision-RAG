@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     # Rerank Settings
     vllm_rerank_url: str = "http://vllm-bge-reranker:8000"
     vllm_rerank_model: str = "/model/bge-reranker-v2-m3"
-    rerank_top_n_multiplier: int = 2  # top_n = k * multiplier for rerank candidates
+    rerank_top_n_multiplier: int = 10  # top_n = k * multiplier for rerank candidates
 
     # File Upload Settings
     max_file_size: int = 500 * 1024 * 1024  # 50MB
@@ -70,27 +70,27 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 4096  # Max tokens for LLM response
 
     # RAG Retrieval Settings
-    retrieval_score_threshold: float = 0.65  # Minimum similarity score for relevance
+    retrieval_score_threshold: float = 0.4  # Minimum similarity score for relevance
     rerank_score_threshold: float = 0.3  # Minimum rerank score for filtering
     fetch_k_multiplier: int = 50  # Multiplier for fetch_k (k * multiplier)
 
     # Multi-Collection Retrieval Settings
     regulations_retrieval_k: int = (
-        3  # Number of docs to retrieve from regulations collection
+        5  # Number of docs to retrieve from regulations collection
     )
     regulations_score_threshold: float = 0.5  # Score threshold for regulations
     regulations_min_sufficient_docs: int = (
         2  # Min docs needed for regulations to be sufficient
     )
     hazard_db_retrieval_k: int = (
-        3  # Number of docs to retrieve from hazard_db collection
+        5  # Number of docs to retrieve from hazard_db collection
     )
     hazard_db_score_threshold: float = 0.4  # Score threshold for hazard_db
-    max_combined_docs: int = 3  # Max combined docs per hazard
+    max_combined_docs: int = 5  # Max combined docs per hazard
 
     # Document Formatting Settings
-    max_doc_length: int = 800  # Max characters per document in context
-    max_context_length: int = 1500  # Max total context length for LLM
+    max_doc_length: int = 600  # Max characters per document in context
+    max_context_length: int = 3000  # Max total context length for LLM
 
     # Hard Threshold for Low Quality Retrieval
     min_retrieval_score: float = 0.3  # Below this score, return "no relevant docs"

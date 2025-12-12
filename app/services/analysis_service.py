@@ -97,11 +97,9 @@ class AnalysisService:
         image_b64 = base64.b64encode(image_bytes).decode()
         hazards_list = await self._extract_hazards_as_list(image_b64)
 
+        # If no hazards detected, return empty report (not an error)
         if not hazards_list:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="No safety hazards detected in the image",
-            )
+            return SafetyReport(violations=[])
 
         # Step 2: Batch retrieve documents for each hazard (parallel)
         docs_per_hazard = await self._batch_retrieve_per_hazard(hazards_list)
@@ -113,9 +111,34 @@ class AnalysisService:
         ]
         violations = await asyncio.gather(*violation_tasks)
 
-        # Step 4: Assemble final report
+        # Step 4: Filter out violations without relevant regulations
+        # Only keep hazards that have successfully retrieved relevant knowledge
+        filtered_violations = [
+            v
+            for v in violations
+            if not any(
+                keyword in v.rule_reference
+                for keyword in [
+                    "未检索到",
+                    "未找到",
+                    "未查找到",
+                    "检索失败",
+                    "生成失败",
+                ]
+            )
+        ]
+
+        # Step 5: Reassign continuous hazard_id after filtering
+        # Ensure hazard_id is always sequential (1, 2, 3, ...) in final report
+        reindexed_violations = [
+            v.model_copy(update={"hazard_id": idx + 1})
+            for idx, v in enumerate(filtered_violations)
+        ]
+
+        # Step 6: Assemble final report
+        # If no valid violations found, return empty report
         report = SafetyReport(
-            violations=violations,
+            violations=reindexed_violations,
         )
 
         return report
@@ -128,13 +151,16 @@ class AnalysisService:
         """
         messages = [
             SystemMessage(
-                content="""你是安全专家。分析图片并提取安全隐患。
-
+                content="""你是专业的安全检查员，识别图片中确实存在的安全隐患。
 要求：
-1. 每条隐患用简洁语言描述（10-20字）
-2. 按严重程度排序（最严重的在前）
-3. 提取 1-5 个最重要的隐患
-4. 返回结构化的隐患列表
+1. 必须有明确的视觉证据
+2. 禁止猜测或推测可能存在的隐患
+3. 只识别违反安全规范的明确行为或状态
+4. 每条隐患用精确语言描述（10-30字，包含具体细节）
+5. 按严重程度排序
+6. 返回 0-5 个最关键的隐患
+
+如果图片中没有明确的安全隐患，返回空列表（hazards: []）。
 """
             ),
             HumanMessage(
