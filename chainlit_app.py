@@ -7,7 +7,6 @@ Provides conversational interface for knowledge base Q&A
 import chainlit as cl
 from typing import List
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from langchain.schema.runnable.config import RunnableConfig
 
 # Import from our FastAPI app
 from app.services.qa_service import QAService

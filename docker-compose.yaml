@@ -154,3 +154,34 @@ services:
       qdrant-server:
         condition: service_started
     restart: unless-stopped
+
+  # (服务 6) Chainlit RAG QA Web UI
+  chainlit-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: safetyvision-rag:latest
+    container_name: chainlit-ui
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./app:/app/app:rw
+      - ./chainlit_app.py:/app/chainlit_app.py:ro
+      - ./.chainlit:/app/.chainlit:rw # 挂载 Chainlit 配置目录
+    environment:
+      QDRANT_HOST: qdrant-server
+      VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1
+      VLLM_EMBED_URL: http://vllm-bge-m3:8000/v1
+      VLLM_RERANK_URL: http://vllm-bge-reranker:8000
+      QDRANT_COLLECTION: rag-test
+      VLLM_MODEL_NAME: /model/qwen3-vl-4b
+      VLLM_EMBED_MODEL: /model/bge-m3
+      VLLM_RERANK_MODEL: /model/bge-reranker-v2-m3
+      CHAINLIT_HOST: 0.0.0.0
+      CHAINLIT_PORT: 8000
+    command: ["chainlit", "run", "chainlit_app.py", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - ai-network
+    depends_on:
+      - safetyvision-api
+    restart: unless-stopped
