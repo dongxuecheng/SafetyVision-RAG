@@ -130,7 +130,7 @@ class Settings(BaseSettings):
 
     hazard_levels: List[str] = [
         "一般隐患",
-        "重要隐患",
+        "重大隐患",
     ]
 
     @property
