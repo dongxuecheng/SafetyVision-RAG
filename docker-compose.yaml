@@ -132,6 +132,7 @@ services:
     volumes:
       - ./app:/app/app:rw # 挂载应用代码，支持热更新
       - ./file:/app/file:rw # 挂载文件目录，支持读写
+      - ./:/workspace:rw # 挂载工作目录，支持读写
     environment:
       QDRANT_HOST: qdrant-server
       VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1

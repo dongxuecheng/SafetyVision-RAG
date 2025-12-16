@@ -2,18 +2,26 @@
 QA API endpoints
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from app.schemas.qa import QARequest, QAResponse
 from app.services.qa_service import QAService
 
 router = APIRouter(prefix="/api/qa", tags=["QA"])
 
-# Initialize QA service (singleton)
-qa_service = QAService()
+
+def get_qa_service() -> QAService:
+    """
+    Dependency injection for QA service
+    Lazy initialization to avoid collection not found error
+    """
+    return QAService()
 
 
 @router.post("/ask", response_model=QAResponse)
-async def ask_question(request: QARequest):
+async def ask_question(
+    request: QARequest,
+    qa_service: QAService = Depends(get_qa_service)
+):
     """
     Ask a question and get answer from knowledge base
     
