@@ -10,10 +10,7 @@ class QARequest(BaseModel):
     """QA request schema"""
 
     question: str = Field(
-        ..., 
-        description="User question",
-        min_length=1,
-        max_length=500
+        ..., description="User question", min_length=1, max_length=500
     )
 
 
@@ -31,8 +28,7 @@ class QAResponse(BaseModel):
 
     answer: str = Field(description="Generated answer")
     sources: List[SourceDocument] = Field(
-        default_factory=list,
-        description="Source documents used for answer"
+        default_factory=list, description="Source documents used for answer"
     )
     has_relevant_sources: bool = Field(
         description="Whether relevant sources were found"

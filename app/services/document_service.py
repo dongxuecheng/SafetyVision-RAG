@@ -26,9 +26,15 @@ class DocumentService:
         self.embeddings = get_embeddings()
 
     async def upload_documents(
-        self, files: List[UploadFile], skip_existing: bool = True
+        self, files: List[UploadFile], skip_existing: bool = True, collection: str = "auto"
     ) -> List[DocumentDetail]:
-        """Upload and process multiple documents"""
+        """Upload and process multiple documents to specified collection
+        
+        Args:
+            files: List of files to upload
+            skip_existing: Skip files that already exist
+            collection: Target collection - 'auto', 'regulations', 'hazard_db', or 'qa'
+        """
         if len(files) > self.settings.max_files:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -37,15 +43,21 @@ class DocumentService:
 
         details = []
         for file in files:
-            detail = await self._process_single_file(file, skip_existing)
+            detail = await self._process_single_file(file, skip_existing, collection)
             details.append(detail)
 
         return details
 
     async def _process_single_file(
-        self, file: UploadFile, skip_existing: bool
+        self, file: UploadFile, skip_existing: bool, collection: str = "auto"
     ) -> DocumentDetail:
-        """Process a single file"""
+        """Process a single file
+        
+        Args:
+            file: File to process
+            skip_existing: Skip if file already exists
+            collection: Target collection - 'auto', 'regulations', 'hazard_db', or 'qa'
+        """
         # Get file extension
         file_ext = Path(file.filename).suffix.lower()
 
@@ -65,11 +77,25 @@ class DocumentService:
                 filename=file.filename, status="failed", message="文件过大"
             )
 
-        # Determine which collection to use based on file type
-        if file_ext in [".xlsx", ".xls"]:
-            target_collection = self.settings.qdrant_collection_hazard_db
-        else:
+        # Determine which collection to use
+        if collection == "auto":
+            # Auto-detect based on file type (backward compatibility)
+            if file_ext in [".xlsx", ".xls"]:
+                target_collection = self.settings.qdrant_collection_hazard_db
+            else:
+                target_collection = self.settings.qdrant_collection_regulations
+        elif collection == "regulations":
             target_collection = self.settings.qdrant_collection_regulations
+        elif collection == "hazard_db":
+            target_collection = self.settings.qdrant_collection_hazard_db
+        elif collection == "qa":
+            target_collection = self.settings.qdrant_collection_qa
+        else:
+            return DocumentDetail(
+                filename=file.filename,
+                status="failed",
+                message=f"Invalid collection: {collection}. Must be 'auto', 'regulations', 'hazard_db', or 'qa'",
+            )
 
         # Check if exists in the target collection
         try:
@@ -111,11 +137,8 @@ class DocumentService:
                 self.settings.chunk_overlap,
             )
 
-            # Determine which collection to use based on file type
-            if file_ext in [".xlsx", ".xls"]:
-                collection_name = self.settings.qdrant_collection_hazard_db
-            else:
-                collection_name = self.settings.qdrant_collection_regulations
+            # Use the target_collection determined earlier
+            collection_name = target_collection
 
             # Store in vector database (routed to appropriate collection)
             QdrantVectorStore.from_documents(
@@ -147,15 +170,29 @@ class DocumentService:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    def list_documents(self) -> List[DocumentInfo]:
-        """List all documents from all collections"""
+    def list_documents(self, collection: str = "all") -> List[DocumentInfo]:
+        """List documents from specified collection(s)
+        
+        Args:
+            collection: 'all', 'regulations', 'hazard_db', or 'qa'
+        """
         all_docs = {}
 
-        # Query both collections
-        collections = [
-            self.settings.qdrant_collection_regulations,
-            self.settings.qdrant_collection_hazard_db,
-        ]
+        # Determine which collections to query
+        if collection == "all":
+            collections = [
+                self.settings.qdrant_collection_regulations,
+                self.settings.qdrant_collection_hazard_db,
+                self.settings.qdrant_collection_qa,
+            ]
+        elif collection == "regulations":
+            collections = [self.settings.qdrant_collection_regulations]
+        elif collection == "hazard_db":
+            collections = [self.settings.qdrant_collection_hazard_db]
+        elif collection == "qa":
+            collections = [self.settings.qdrant_collection_qa]
+        else:
+            return []
 
         for collection_name in collections:
             # Check if collection exists
@@ -192,13 +229,30 @@ class DocumentService:
             for name, count in all_docs.items()
         ]
 
-    def delete_documents(self, filenames: List[str]) -> List[dict]:
-        """Delete documents by filename from both collections"""
+    def delete_documents(self, filenames: List[str], collection: str = "all") -> List[dict]:
+        """Delete documents by filename from specified collection(s)
+        
+        Args:
+            filenames: List of filenames to delete
+            collection: 'all', 'regulations', 'hazard_db', or 'qa'
+        """
         results = []
-        collections = [
-            self.settings.qdrant_collection_regulations,
-            self.settings.qdrant_collection_hazard_db,
-        ]
+        
+        # Determine which collections to delete from
+        if collection == "all":
+            collections = [
+                self.settings.qdrant_collection_regulations,
+                self.settings.qdrant_collection_hazard_db,
+                self.settings.qdrant_collection_qa,
+            ]
+        elif collection == "regulations":
+            collections = [self.settings.qdrant_collection_regulations]
+        elif collection == "hazard_db":
+            collections = [self.settings.qdrant_collection_hazard_db]
+        elif collection == "qa":
+            collections = [self.settings.qdrant_collection_qa]
+        else:
+            return [{"filename": f, "status": "invalid_collection"} for f in filenames]
 
         for filename in filenames:
             total_removed = 0

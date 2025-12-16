@@ -20,7 +20,7 @@ from app.schemas.qa import QAResponse, SourceDocument
 class QAService:
     """
     RAG-based QA service
-    
+
     Architecture:
     - Retrieval: Reuses SafetyRetriever (Similarity + Rerank)
     - Generation: Reuses LLM from deps (Qwen-VL)
@@ -30,17 +30,17 @@ class QAService:
     def __init__(self):
         self.llm = get_llm()
         self.settings = get_settings()
-        
+
         # Initialize retriever for QA knowledge base
         self.retriever = SafetyRetriever(
             get_vector_store("qa"),  # Uses qdrant_collection_qa
-            reranker_client=get_reranker_client()
+            reranker_client=get_reranker_client(),
         )
 
     async def answer_question(self, question: str) -> QAResponse:
         """
         Answer user question using RAG
-        
+
         Flow:
         1. Retrieve relevant documents from knowledge base
         2. Format retrieved documents as context
@@ -51,7 +51,7 @@ class QAService:
         docs = await self.retriever.retrieve_with_fallback(
             query=question,
             k=self.settings.regulations_retrieval_k,  # Reuse existing config
-            score_threshold=self.settings.retrieval_score_threshold
+            score_threshold=self.settings.retrieval_score_threshold,
         )
 
         # Step 2: Check if we have relevant sources
@@ -64,39 +64,35 @@ class QAService:
             return QAResponse(
                 answer="抱歉，我在知识库中没有找到与您的问题相关的信息。请尝试换个方式提问，或者上传相关文档。",
                 sources=[],
-                has_relevant_sources=False
+                has_relevant_sources=False,
             )
 
         # Step 3: Format context from retrieved documents
         context = self._format_context(docs)
-        
+
         # Step 4: Generate answer using LLM
         answer = await self._generate_answer(question, context)
-        
+
         # Step 5: Format source documents
         sources = self._format_sources(docs)
 
-        return QAResponse(
-            answer=answer,
-            sources=sources,
-            has_relevant_sources=True
-        )
+        return QAResponse(answer=answer, sources=sources, has_relevant_sources=True)
 
     def _format_context(self, docs: List[Document]) -> str:
         """
         Format retrieved documents into context string
         """
         context_parts = []
-        
+
         for i, doc in enumerate(docs[:5], 1):  # Use top 5 documents
-            content = doc.page_content[:self.settings.max_doc_length]
+            content = doc.page_content[: self.settings.max_doc_length]
             score = doc.metadata.get("score", 0.0)
             filename = doc.metadata.get("filename", "未知来源")
-            
+
             context_parts.append(
                 f"[文档{i}] (来源: {filename}, 相似度: {score:.3f})\n{content}"
             )
-        
+
         return "\n\n---\n\n".join(context_parts)
 
     async def _generate_answer(self, question: str, context: str) -> str:
@@ -127,7 +123,7 @@ class QAService:
 {context[:self.settings.max_context_length]}
 
 请基于以上文档回答问题。"""
-            )
+            ),
         ]
 
         try:
@@ -141,11 +137,11 @@ class QAService:
         Format documents as source references
         """
         sources = []
-        
+
         for doc in docs[:5]:  # Return top 5 sources
             filename = doc.metadata.get("filename", "未知来源")
             score = doc.metadata.get("score", 0.0)
-            
+
             # Extract location
             sheet = doc.metadata.get("sheet_name")
             row_range = doc.metadata.get("row_range")
@@ -168,8 +164,8 @@ class QAService:
                     content=doc.page_content[:300],  # Preview first 300 chars
                     filename=filename,
                     location=location,
-                    score=score
+                    score=score,
                 )
             )
-        
+
         return sources

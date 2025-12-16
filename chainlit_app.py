@@ -24,7 +24,7 @@ async def on_chat_start():
     """
     # Initialize message history in session
     cl.user_session.set("message_history", [])
-    
+
     # Send welcome message
     await cl.Message(
         content="""👋 欢迎使用 RAG 知识问答系统！
@@ -49,27 +49,27 @@ async def on_message(message: cl.Message):
     Handle user messages
     """
     user_question = message.content
-    
+
     # Show loading message
     msg = cl.Message(content="")
     await msg.send()
-    
+
     try:
         # Get answer from QA service
         response = await qa_service.answer_question(user_question)
-        
+
         # Format answer with sources
         answer_text = response.answer
-        
+
         # Create text elements for sources
         text_elements: List[cl.Text] = []
-        
+
         if response.has_relevant_sources and response.sources:
             answer_text += "\n\n📚 **参考来源：**\n"
-            
+
             for idx, source in enumerate(response.sources, 1):
                 source_name = f"source_{idx}"
-                
+
                 # Create expandable source element
                 text_elements.append(
                     cl.Text(
@@ -81,20 +81,20 @@ async def on_message(message: cl.Message):
 **内容:**
 {source.content}
 """,
-                        display="side"  # Display in sidebar
+                        display="side",  # Display in sidebar
                     )
                 )
-                
+
                 # Add source reference to answer
                 answer_text += f"{idx}. [{source.filename}](#{source_name}) (相似度: {source.score:.2f})\n"
         else:
             answer_text += "\n\n💡 *未找到相关文档，建议补充知识库或换个方式提问*"
-        
+
         # Update message with answer
         msg.content = answer_text
         msg.elements = text_elements
         await msg.update()
-        
+
     except Exception as e:
         msg.content = f"❌ 抱歉，处理您的问题时出现错误：{str(e)}"
         await msg.update()
