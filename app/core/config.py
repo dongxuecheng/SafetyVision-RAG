@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     # Multiple Collection Names for different document types
     qdrant_collection_regulations: str = "rag-regulations"  # PDF/Markdown/Word
     qdrant_collection_hazard_db: str = "rag-hazard-db"  # Excel files
+    qdrant_collection_qa: str = "rag-qa-knowledge"  # QA system knowledge base
 
     # Excel Processing Settings
     excel_rows_per_chunk: int = 10  # Merge N rows into one chunk to reduce total chunks

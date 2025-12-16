@@ -16,3 +16,4 @@ xlrd
 cohere>=5.0.0
 beautifulsoup4
 lxml
+chainlit>=1.0.0

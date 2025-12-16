@@ -47,7 +47,7 @@ def get_vector_store(collection_type: str = "regulations") -> QdrantVectorStore:
     """Get vector store instance for specific collection type
 
     Args:
-        collection_type: Type of collection - 'regulations' or 'hazard_db'
+        collection_type: Type of collection - 'regulations', 'hazard_db', or 'qa'
 
     Returns:
         QdrantVectorStore instance
@@ -58,6 +58,7 @@ def get_vector_store(collection_type: str = "regulations") -> QdrantVectorStore:
     collection_map = {
         "regulations": settings.qdrant_collection_regulations,
         "hazard_db": settings.qdrant_collection_hazard_db,
+        "qa": settings.qdrant_collection_qa,  # New QA collection
     }
 
     collection_name = collection_map.get(
@@ -75,7 +76,7 @@ def ensure_collection(collection_type: str = "all") -> None:
     """Ensure Qdrant collection(s) exist
 
     Args:
-        collection_type: 'all', 'regulations', or 'hazard_db'
+        collection_type: 'all', 'regulations', 'hazard_db', or 'qa'
     """
     settings = get_settings()
     client = get_qdrant_client()
@@ -86,11 +87,14 @@ def ensure_collection(collection_type: str = "all") -> None:
         collections_to_create = [
             settings.qdrant_collection_regulations,
             settings.qdrant_collection_hazard_db,
+            settings.qdrant_collection_qa,  # Include QA collection
         ]
     elif collection_type == "regulations":
         collections_to_create = [settings.qdrant_collection_regulations]
     elif collection_type == "hazard_db":
         collections_to_create = [settings.qdrant_collection_hazard_db]
+    elif collection_type == "qa":
+        collections_to_create = [settings.qdrant_collection_qa]
 
     # Create collections if they don't exist
     for collection_name in collections_to_create:

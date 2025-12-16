@@ -1,0 +1,56 @@
+# Chainlit 配置文件
+
+[project]
+# 是否启用遥测
+enable_telemetry = false
+
+# 是否在公开模式下运行
+public = true
+
+# 项目 ID（可选）
+# id = ""
+
+[features]
+# 启用/禁用文件上传功能
+upload = false
+
+# 启用聊天历史
+chat_history = true
+
+# 启用编辑消息
+edit_message = true
+
+# 启用自然语言搜索
+# search = false
+
+[UI]
+# 应用名称
+name = "RAG 知识问答系统"
+
+# 描述
+description = "基于 LangChain 的智能问答助手"
+
+# 默认折叠代码块
+default_collapse_content = true
+
+# 默认扩展消息
+default_expand_messages = false
+
+# 隐藏 CoT（思维链）
+hide_cot = false
+
+# GitHub 链接（可选）
+# github = "https://github.com/your-repo"
+
+[UI.theme]
+# 主题：light 或 dark
+default = "dark"
+
+# 自定义主题（可选）
+# [UI.theme.light]
+# background = "#FAFAFA"
+# paper = "#FFFFFF"
+
+# [UI.theme.dark]
+# background = "#1E1E1E"
+# paper = "#2D2D2D"
