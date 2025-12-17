@@ -4,3 +4,15 @@
 .chainlit-logo {
     display: none !important;
 }
+
+/* 在欢迎页面添加居中大标题 */
+#welcome-screen::before {
+    content: "安全生产大模型知识问答系统";
+    display: block;
+    text-align: center;
+    font-size: 3rem;
+    font-weight: bold;
+    color: var(--cl-primary, #1976d2);
+    padding: 1.5rem 0;
+    margin-bottom: 1rem;
+}

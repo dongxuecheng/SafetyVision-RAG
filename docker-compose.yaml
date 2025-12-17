@@ -162,13 +162,14 @@ services:
     image: safetyvision-rag:latest
     container_name: chainlit-ui
     ports:
-      - "8001:8000"
+      - "25810:8000"
     volumes:
       - ./app:/app/app:ro # 应用代码只读
       - ./chainlit_app.py:/app/chainlit_app.py:ro # 主程序只读
       - ./.chainlit:/app/.chainlit:rw # 配置目录读写
       - ./public:/app/public:ro # 静态文件只读
       - ./chainlit.md:/app/chainlit.md:ro # 欢迎页面只读
+      - ./chainlit_zh-CN.md:/app/chainlit_zh-CN.md:ro # 中文欢迎页面只读
     environment:
       QDRANT_HOST: qdrant-server
       VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1

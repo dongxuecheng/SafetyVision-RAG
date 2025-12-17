@@ -35,11 +35,11 @@ async def set_starters():
         ),
         cl.Starter(
             label="规范条文解读",
-            message="请解释《建筑施工高处作业安全技术规范》中关于安全防护的具体要求",
+            message="请解释《煤矿建设安全规范》中的相关要求",
         ),
         cl.Starter(
             label="设备安全标准",
-            message="塔吊作业需要满足哪些安全标准？",
+            message="井下作业需要满足哪些安全标准？",
         ),
     ]
 
