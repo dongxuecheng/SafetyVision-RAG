@@ -10,6 +10,8 @@ __pycache__/
 dist/
 build/
 *.egg
+*.pyc
+.pytest_cache/
 
 # 虚拟环境
 venv/
@@ -46,11 +48,5 @@ Thumbs.db
 # Chainlit runtime
 .chainlit/
 
-# Python
-__pycache__/
-*.pyc
-.pytest_cache/
-
-# IDE
-.vscode/
-.idea/
+# Chainlit auto-generated translations
+.chainlit/translations/
