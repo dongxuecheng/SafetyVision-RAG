@@ -130,9 +130,8 @@ services:
     ports:
       - "8080:8000"
     volumes:
-      - ./app:/app/app:rw # 挂载应用代码，支持热更新
-      - ./file:/app/file:rw # 挂载文件目录，支持读写
-      - ./:/workspace:rw # 挂载工作目录，支持读写
+      - ./app:/app/app:ro # 应用代码只读（生产环境最佳实践）
+      - ./file:/app/file:rw # 文件上传目录读写
     environment:
       QDRANT_HOST: qdrant-server
       VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1
@@ -165,9 +164,11 @@ services:
     ports:
       - "8001:8000"
     volumes:
-      - ./app:/app/app:rw
-      - ./chainlit_app.py:/app/chainlit_app.py:ro
-      - ./.chainlit:/app/.chainlit:rw # 挂载 Chainlit 配置目录
+      - ./app:/app/app:ro # 应用代码只读
+      - ./chainlit_app.py:/app/chainlit_app.py:ro # 主程序只读
+      - ./.chainlit:/app/.chainlit:rw # 配置目录读写
+      - ./public:/app/public:ro # 静态文件只读
+      - ./chainlit.md:/app/chainlit.md:ro # 欢迎页面只读
     environment:
       QDRANT_HOST: qdrant-server
       VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1

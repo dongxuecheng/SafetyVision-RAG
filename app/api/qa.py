@@ -39,9 +39,3 @@ async def ask_question(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to answer question: {str(e)}",
         )
-
-
-@router.get("/health")
-async def health_check():
-    """Health check for QA service"""
-    return {"status": "ok", "service": "QA"}

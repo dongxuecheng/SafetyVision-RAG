@@ -1,13 +1,76 @@
 #!/bin/bash
-# 删除所有已上传的文档（从所有 collections）
+# 删除所有已上传的文档
 
-echo "=== 删除所有文档 ==="
+# 默认配置
+DEFAULT_PROJECT="hazard"  # 默认项目：hazard (隐患识别) 或 qa (知识问答)
+
+# 使用方法
+usage() {
+    echo "使用方法: $0 [选项]"
+    echo ""
+    echo "选项:"
+    echo "  -p, --project <项目>  指定项目类型:"
+    echo "                          hazard  - 隐患识别 (默认，删除 rag-regulations + rag-hazard-db)"
+    echo "                          qa      - RAG知识问答 (删除 rag-qa-knowledge)"
+    echo "                          all     - 所有项目 (删除所有 collections)"
+    echo "  -h, --help            显示此帮助信息"
+    echo ""
+    echo "示例:"
+    echo "  $0                      # 删除隐患识别项目文档（默认）"
+    echo "  $0 -p qa                # 删除RAG知识问答项目文档"
+    echo "  $0 -p all               # 删除所有项目文档"
+    echo "  $0 --project hazard     # 删除隐患识别项目文档"
+    exit 1
+}
+
+# 解析参数
+PROJECT="$DEFAULT_PROJECT"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -p|--project)
+            PROJECT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "❌ 错误: 未知参数 '$1'"
+            usage
+            ;;
+    esac
+done
+
+# 验证项目类型
+if [ "$PROJECT" != "hazard" ] && [ "$PROJECT" != "qa" ] && [ "$PROJECT" != "all" ]; then
+    echo "❌ 错误: 无效的项目类型 '$PROJECT'"
+    echo "   支持的项目: hazard, qa, all"
+    echo ""
+    usage
+fi
+
+# 根据项目类型设置 collections
+if [ "$PROJECT" = "qa" ]; then
+    COLLECTIONS=("rag-qa-knowledge")
+    PROJECT_NAME="RAG知识问答"
+elif [ "$PROJECT" = "all" ]; then
+    COLLECTIONS=("rag-qa-knowledge" "rag-regulations" "rag-hazard-db")
+    PROJECT_NAME="所有项目"
+else
+    COLLECTIONS=("rag-regulations" "rag-hazard-db")
+    PROJECT_NAME="隐患识别"
+fi
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "=== 删除文档 ==="
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "🎯 目标项目: $PROJECT_NAME ($PROJECT)"
+echo "📦 Collections: ${COLLECTIONS[*]}"
+echo ""
 
 # Qdrant 服务地址
 QDRANT_URL="http://localhost:6333"
-
-# 两个 collection 名称
-COLLECTIONS=("rag-regulations" "rag-hazard-db")
 
 echo -e "\n正在查询所有 collections 的文档...\n"
 
@@ -197,4 +260,8 @@ except:
 done
 
 echo ""
-echo "✅ 所有文档已删除完成！"
+if [ "$PROJECT" = "all" ]; then
+    echo "✅ 所有项目的文档已删除完成！"
+else
+    echo "✅ $PROJECT_NAME 项目的文档已删除完成！"
+fi

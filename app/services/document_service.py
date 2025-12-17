@@ -105,26 +105,35 @@ class DocumentService:
                 message=f"Invalid purpose: {purpose}. Must be 'qa' or 'safety'",
             )
 
-        # Check if exists in the target collection
-        try:
-            result = self.client.scroll(
-                collection_name=target_collection,
-                scroll_filter={
-                    "must": [
-                        {"key": "metadata.filename", "match": {"value": file.filename}}
-                    ]
-                },
-                limit=1,
-                with_vectors=False,
-            )
-
-            if len(result[0]) > 0 and skip_existing:
-                return DocumentDetail(
-                    filename=file.filename, status="skipped", message="Already exists"
+        # Check if exists in the target collection (only if skip_existing is True)
+        if skip_existing:
+            try:
+                result = self.client.scroll(
+                    collection_name=target_collection,
+                    scroll_filter={
+                        "must": [
+                            {
+                                "key": "metadata.filename",
+                                "match": {"value": file.filename},
+                            }
+                        ]
+                    },
+                    limit=1,
+                    with_vectors=False,
                 )
-        except Exception as e:
-            # Collection might not exist yet, that's OK - will be created during upload
-            pass
+
+                # result is a tuple: (points, offset)
+                points = result[0]
+                if len(points) > 0:
+                    return DocumentDetail(
+                        filename=file.filename,
+                        status="skipped",
+                        message="Already exists",
+                    )
+            except Exception as e:
+                # Collection might not exist yet, that's OK - will be created during upload
+                # Or other errors during scroll - just continue with upload
+                pass
 
         # Process document
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
@@ -208,7 +217,7 @@ class DocumentService:
             while True:
                 points, offset = self.client.scroll(
                     collection_name=collection_name,
-                    limit=self.settings.qdrant_scroll_limit,
+                    limit=1000,  # 使用更大的 limit 提高效率
                     offset=offset,
                     with_payload=True,
                     with_vectors=False,
@@ -224,6 +233,7 @@ class DocumentService:
                     all_docs.setdefault(filename, 0)
                     all_docs[filename] += 1
 
+                # 继续获取直到 offset 为 None（表示没有更多数据）
                 if offset is None:
                     break
 

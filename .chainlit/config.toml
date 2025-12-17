@@ -27,7 +27,7 @@ allow_origins = ["*"]
 unsafe_allow_html = false
 
 # Process and display mathematical expressions. This can clash with "$" characters in messages.
-latex = false
+latex = true
 
 # Autoscroll new user messages at the top of the window
 user_message_autoscroll = true
@@ -47,7 +47,7 @@ reaction_on_message_received = false
 
 # Authorize users to spontaneously upload files with messages
 [features.spontaneous_file_upload]
-    enabled = true
+    enabled = false
     # Define accepted file types using MIME types
     # Examples:
     # 1. For specific file types:
@@ -86,13 +86,13 @@ reaction_on_message_received = false
 
 [UI]
 # Name of the assistant.
-name = "Assistant"
+name = "安全生产大模型知识问答系统"
 
 # default_theme = "dark"
 
 # Force a specific language for all users (e.g., "en-US", "he-IL", "fr-FR")
 # If not set, the browser's language will be used
-# language = "en-US"
+language = "zh-CN"
 
 # layout = "wide"
 
@@ -106,7 +106,7 @@ cot = "full"
 
 # Specify a CSS file that can be used to customize the user interface.
 # The CSS file can be served from the public directory or via an external link.
-# custom_css = "/public/test.css"
+custom_css = "/public/custom.css"
 
 # Specify additional attributes for a custom CSS file
 # custom_css_attributes = "media=\"print\""

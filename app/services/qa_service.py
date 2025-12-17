@@ -8,7 +8,7 @@ Reuses existing components:
 """
 
 from typing import List
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.documents import Document
 
 from app.core.deps import get_llm, get_vector_store, get_reranker_client
@@ -109,6 +109,7 @@ class QAService:
 3. 回答要准确、简洁、易懂
 4. 适当引用文档来源
 5. 使用专业但友好的语气
+6. 如需展示数学公式，使用 LaTeX 格式（行内公式用 $...$ ，独立公式用 $$...$$）
 
 回答格式：
 - 直接回答问题（100-300字）
@@ -131,6 +132,104 @@ class QAService:
             return response.content
         except Exception as e:
             return f"抱歉，生成答案时出现错误: {str(e)}"
+
+    async def _generate_answer_stream(self, question: str, context: str):
+        """
+        Generate answer using LLM with streaming support
+        Yields tokens one by one for real-time display
+        """
+        messages = [
+            SystemMessage(
+                content="""你是一个专业的知识问答助手。根据提供的文档内容回答用户问题。
+
+要求：
+1. 答案必须基于提供的文档内容，不要编造信息
+2. 如果文档中没有相关信息，明确告知用户
+3. 回答要准确、简洁、易懂
+4. 适当引用文档来源
+5. 使用专业但友好的语气
+6. 如需展示数学公式，使用 LaTeX 格式（行内公式用 $...$ ，独立公式用 $$...$$）
+
+回答格式：
+- 直接回答问题（100-300字）
+- 必要时分点说明
+- 标注关键信息来源
+"""
+            ),
+            HumanMessage(
+                content=f"""问题: {question}
+
+参考文档:
+{context[:self.settings.max_context_length]}
+
+请基于以上文档回答问题。"""
+            ),
+        ]
+
+        try:
+            # Use astream for streaming response
+            async for chunk in self.llm.astream(messages):
+                if chunk.content:
+                    yield chunk.content
+        except Exception as e:
+            yield f"抱歉，生成答案时出现错误: {str(e)}"
+
+    async def _generate_answer_stream_with_history(
+        self, question: str, context: str, message_history: List[dict]
+    ):
+        """
+        Generate answer with conversation history support
+
+        Args:
+            question: Current user question
+            context: Retrieved document context
+            message_history: List of previous messages [{"role": "user/assistant", "content": "..."}]
+        """
+        messages = [
+            SystemMessage(
+                content="""你是一个专业的知识问答助手。根据提供的文档内容和对话历史回答用户问题。
+
+要求：
+1. 答案必须基于提供的文档内容，不要编造信息
+2. 如果用户提到“上一个问题”或“刚才”，请参考对话历史
+3. 回答要准确、简洁、易懂，能够联系上下文
+4. 适当引用文档来源
+5. 使用专业但友好的语气
+6. 如需展示数学公式，使用 LaTeX 格式（行内公式用 $...$ ，独立公式用 $$...$$）
+
+回答格式：
+- 直接回答问题（100-300字）
+- 必要时分点说明
+- 标注关键信息来源
+"""
+            )
+        ]
+
+        # Add conversation history (up to last 5 rounds)
+        for msg in message_history[-10:]:
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            elif msg["role"] == "assistant":
+                messages.append(AIMessage(content=msg["content"]))
+
+        # Add current question with context
+        messages.append(
+            HumanMessage(
+                content=f"""问题: {question}
+
+参考文档:
+{context[:self.settings.max_context_length]}
+
+请基于以上文档和对话历史回答问题。"""
+            )
+        )
+
+        try:
+            async for chunk in self.llm.astream(messages):
+                if chunk.content:
+                    yield chunk.content
+        except Exception as e:
+            yield f"抱歉，生成答案时出现错误: {str(e)}"
 
     def _format_sources(self, docs: List[Document]) -> List[SourceDocument]:
         """

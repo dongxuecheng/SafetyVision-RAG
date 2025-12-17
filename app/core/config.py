@@ -71,9 +71,9 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 4096  # Max tokens for LLM response
 
     # RAG Retrieval Settings
-    retrieval_score_threshold: float = 0.4  # Minimum similarity score for relevance
+    retrieval_score_threshold: float = 0.2  # Lowered: Let reranker do the filtering
     rerank_score_threshold: float = 0.3  # Minimum rerank score for filtering
-    fetch_k_multiplier: int = 50  # Multiplier for fetch_k (k * multiplier)
+    fetch_k_multiplier: int = 100  # Increased: Fetch more candidates for reranking
 
     # Multi-Collection Retrieval Settings
     regulations_retrieval_k: int = (
@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     max_combined_docs: int = 5  # Max combined docs per hazard
 
     # Document Formatting Settings
-    max_doc_length: int = 600  # Max characters per document in context
+    max_doc_length: int = 1500  # Max characters per document in context
     max_context_length: int = 3000  # Max total context length for LLM
 
     # Hard Threshold for Low Quality Retrieval

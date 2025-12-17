@@ -24,7 +24,7 @@ async def upload_documents(
     service: DocumentService = Depends(get_document_service),
 ):
     """Upload documents for specified purpose (QA system or safety inspection)
-    
+
     - **qa**: All files go to qa collection (no Excel files expected)
     - **safety**: Excel → hazard_db, others → regulations
     """
@@ -48,7 +48,7 @@ async def list_documents(
     service: DocumentService = Depends(get_document_service),
 ):
     """List documents by purpose
-    
+
     - **qa**: Lists documents from qa collection
     - **safety**: Lists documents from regulations + hazard_db collections
     """
@@ -66,7 +66,7 @@ async def delete_documents(
     service: DocumentService = Depends(get_document_service),
 ):
     """Delete documents by purpose
-    
+
     - **qa**: Deletes from qa collection
     - **safety**: Deletes from regulations + hazard_db collections
     """
