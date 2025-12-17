@@ -13,81 +13,96 @@ AI-Powered Safety Hazard Detection System using Vision-Language Models and Retri
 ## ✨ 功能特性
 
 ### 核心功能
+- 💬 **智能问答 (Chainlit UI)**：流式对话，支持 LaTeX 公式，完整中文化
 - 🎯 **智能图像分析**：使用 Qwen-VL-4B 多模态大模型识别安全隐患
 - 📋 **结构化输出**：自动提取隐患描述、整改建议、规范引用
-- 📚 **源文档溯源**：每条违规记录附带引用文档的文件名和精确位置
-- 🔍 **高质量检索**：基于 BGE-m3 嵌入 + BGE-Reranker-v2-M3 重排序
+- 📚 **源文档溯源**：每条记录附带引用文档的文件名和精确位置
 
 ### RAG 增强
-- ✅ **多格式文档支持**：PDF、DOCX、DOC、XLSX、XLS
-- ✅ **Excel 行级检索**：支持工作表名 + 行号的精确定位
-- ✅ **相关性过滤**：相似度阈值 0.65 + Rerank 阈值 0.3
-- ✅ **分数优化**：检索召回 30 条候选，重排序后取 Top-3
-- ✅ **文档管理**：上传、删除、列表、去重
+- ✅ **混合检索**：向量搜索 + 关键词匹配 + 文档名过滤
+- ✅ **精确定位**：支持"《文档名》第X条"查询（自动转换阿拉伯/中文数字）
+- ✅ **多格式文档**：PDF、DOCX、XLSX、Markdown
+- ✅ **智能重排**：BGE-Reranker-v2-M3，相似度 0.2 + Rerank 0.3
+- ✅ **对话记忆**：保留最近 10 条历史消息
 
 ## 📐 系统架构
 
 ### 服务架构
 ```
-┌─────────────────────────────────────────────────────┐
-│          SafetyVision-RAG API (8080)                │
-│   FastAPI + LangChain v1.0+ + Async/Await           │
-│                                                     │
-│  ┌──────────────┐  ┌────────────────────────────┐   │
-│  │ VLM Pipeline │  │   RAG Pipeline             │   │
-│  │ - 图像识别    │  │   - 相似度检索 (BGE-m3)    │   │
-│  │ - 隐患提取    │  │   - 重排序 (Reranker-v2-M3)│   │
-│  │ - 结构化输出  │  │   - 分数过滤 (0.65/0.3)     │   │
-│  └──────────────┘  └────────────────────────────┘   │
-└───────────────────────┬──────────────────────────┬──┘
-                        ↓                          ↓
-        ┌───────────────────────┐    ┌───────────────────┐
-        │   Qdrant (6333)       │    │  vLLM GPU Cluster │
-        │   向量数据库           │    │  ├─ Qwen-VL (8000)│
-        │   - Collection管理    │    │  ├─ BGE-m3 (8001) │
-        │   - 向量存储/检索      │    │  └─ Reranker(8002)│
-        └───────────────────────┘    └───────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│           Chainlit UI (8000) - 用户交互层                 │
+│   - 流式对话 + LaTeX 公式 + 中文化                        │
+│   - 对话历史 (10轮) + Starter 推荐问题                   │
+└───────────────────────────┬──────────────────────────────┘
+                            ↓ (调用内部 API)
+┌──────────────────────────────────────────────────────────┐
+│        SafetyVision-RAG API (8080) - 业务逻辑层           │
+│   FastAPI + LangChain + Async/Await                      │
+│                                                           │
+│  ┌──────────────┐  ┌───────────────────────────────────┐ │
+│  │ VLM Pipeline │  │   RAG Pipeline (混合检索)          │ │
+│  │ - 图像识别    │  │   ├─ 向量搜索 (BGE-m3)             │ │
+│  │ - 隐患提取    │  │   ├─ 关键词匹配 (文档名+条款号)    │ │
+│  │ - 结构化输出  │  │   ├─ 重排序 (Reranker-v2-M3)       │ │
+│  └──────────────┘  │   └─ 精确匹配优先 (doc_article)    │ │
+│                    └───────────────────────────────────┘ │
+└──────────────────────┬──────────────────────┬────────────┘
+                       ↓                      ↓
+       ┌───────────────────────┐  ┌───────────────────────┐
+       │  Qdrant (6333)        │  │  vLLM GPU Cluster     │
+       │  向量数据库             │  │  ├─ Qwen-VL (8000)   │
+       │  - rag-qa-knowledge   │  │  ├─ BGE-m3 (8001)     │
+       │  - 14k+ chunks        │  │  └─ Reranker (8002)   │
+       └───────────────────────┘  └───────────────────────┘
 ```
 
 ### 代码架构（Clean Architecture）
 ```
 SafetyVision-RAG/
-├── app/                                # 应用主目录
-│   ├── main.py                         # 应用入口 + 生命周期管理
+├── chainlit_app.py                     # Chainlit UI 入口
+│   ├─ QA 对话流程                       #   - 流式回答 + LaTeX
+│   ├─ Starter 推荐问题                  #   - 引导用户提问
+│   └─ 历史消息管理 (10轮)               #   - 上下文连续对话
+│
+├── app/                                # FastAPI 后端应用
+│   ├── main.py                         # API 入口 + 生命周期
 │   │
-│   ├── api/routes/                     # API 路由层（Presentation）
+│   ├── api/routes/                     # API 路由层
+│   │   ├── qa.py                       # 问答端点（核心）
 │   │   ├── analysis.py                 # 图像分析端点
 │   │   └── documents.py                # 文档管理端点
 │   │
-│   ├── core/                           # 核心基础设施（Infrastructure）
-│   │   ├── config.py                   # Pydantic Settings 配置
-│   │   ├── deps.py                     # 依赖注入（DI Container）
-│   │   └── retrieval.py                # 检索策略（Retriever）
+│   ├── core/                           # 基础设施层
+│   │   ├── config.py                   # 配置管理（45+ 参数）
+│   │   ├── deps.py                     # 依赖注入
+│   │   └── retrieval.py                # 混合检索策略
+│   │       ├─ 向量搜索 + 关键词匹配     #   - BGE-m3 嵌入
+│   │       ├─ 文档名+条款号过滤         #   - 精确定位
+│   │       ├─ 重排序 (Reranker-v2-M3)  #   - 提升准确性
+│   │       └─ 精确匹配优先              #   - doc_article 类型
 │   │
 │   ├── schemas/                        # 数据模型（DTO）
-│   │   └── safety.py                   # API 请求/响应 Schema
-│   │                                   #  - SafetyViolationLLM (LLM输出)
-│   │                                   #  - SafetyViolation (完整模型)
-│   │                                   #  - SourceReference (源文档引用)
+│   │   ├── qa.py                       # QA 请求/响应
+│   │   └── safety.py                   # 图像分析模型
 │   │
-│   └── services/                       # 业务逻辑层（Business Logic）
-│       ├── analysis_service.py         # 安全分析服务
-│       │   ├─ analyze_image()          #   主流程编排
-│       │   ├─ _extract_hazards()       #   VLM 隐患提取
-│       │   ├─ _batch_retrieve()        #   并行检索文档
-│       │   └─ _generate_violation()    #   生成结构化违规
+│   └── services/                       # 业务逻辑层
+│       ├── qa_service.py               # 问答服务（核心）
+│       │   ├─ ask_question()           #   主流程编排
+│       │   ├─ _build_prompt()          #   Prompt 构建
+│       │   └─ _format_sources()        #   源文档格式化
 │       │
+│       ├── analysis_service.py         # 安全分析服务
 │       └── document_service.py         # 文档处理服务
-│           ├─ upload_documents()       #   文档上传 + 向量化
-│           ├─ delete_documents()       #   批量删除
-│           └─ list_documents()         #   文档列表
 │
-├── src/document_processors.py          # 文档处理器工厂
-│   ├─ PDFProcessor                     #   PDF 解析器
-│   ├─ DOCXProcessor                    #   Word 解析器
-│   └─ ExcelProcessor                   #   Excel 行级解析
+├── .chainlit/                          # Chainlit 配置
+│   ├── config.toml                     # UI 配置（中文化）
+│   └── translations/zh-CN.json         # 界面翻译（自动生成）
 │
-└── file/                               # 上传文件存储目录
+├── chainlit.md                         # 默认欢迎页面
+├── chainlit_zh-CN.md                   # 中文欢迎页面
+│
+└── data/qdrant/                        # 向量数据库存储
+    └── rag-qa-knowledge/               # QA 知识库集合
 ```
 
 ### 架构设计原则
@@ -131,23 +146,36 @@ docker compose ps
 docker compose logs -f safetyvision-api
 
 # 检查健康状态
-curl http://localhost:8080/docs  # API 文档（Swagger UI）
-curl http://localhost:28000/health  # Qwen-VL 健康检查
-curl http://localhost:28001/health  # BGE-m3 健康检查
-curl http://localhost:28002/health  # Reranker 健康检查
-curl http://localhost:6333/health  # Qdrant 健康检查
+curl http://localhost:8000           # Chainlit UI（推荐）
+curl http://localhost:8080/docs      # API 文档（Swagger UI）
+curl http://localhost:6333/dashboard # Qdrant 管理界面
 ```
 
-### 3. 初始化文档库（可选）
+**服务端口**：
+- **Chainlit UI**: `http://localhost:8000` - 用户对话界面
+- SafetyVision API: `http://localhost:8080` - 后端 API
+- Qdrant: `http://localhost:6333` - 向量数据库
+
+### 3. 使用 Chainlit UI（推荐）
+
+打开浏览器访问 `http://localhost:8000`，开始对话：
+- 点击推荐问题快速开始
+- 支持连续追问和上下文理解
+- 实时流式回答 + LaTeX 公式渲染
+
+### 4. 上传知识库文档
 
 ```bash
-# 上传安全规范文档到向量数据库
-curl -X POST "http://localhost:8080/api/documents/upload" \
-  -F "files=@safety_rules.pdf" \
-  -F "files=@regulations.xlsx"
+# 使用上传脚本（支持项目选择）
+./upload_documents.sh -p qa data/规范文档/
+
+# 或使用 API
+curl -X POST "http://localhost:8080/api/qa/documents" \
+  -F "files=@安全生产法.pdf" \
+  -F "files=@建筑施工规范.docx"
 ```
 
-### 4. 测试图像分析
+### 5. 测试图像分析（可选）
 
 ```bash
 # 分析包含安全隐患的图片
@@ -380,62 +408,57 @@ rm -rf ./file/*
 
 ## ❓ 常见问题
 
-### Q1: 如何避免重复上传文档？
+### Q1: 如何查询特定文档条款（如"第32条"）？
 
-在上传 API 中使用 `skip_existing=true` 参数（默认开启）：
-```bash
-curl -X POST "http://localhost:8080/api/documents/upload?skip_existing=true" \
-  -F "files=@document.pdf"
+**直接提问即可**，系统会自动转换数字格式：
+```
+用户: 中华人民共和国行政许可法的第32条是什么？
+系统: 自动搜索"第32条"和"第三十二条"，返回完整内容
 ```
 
-### Q2: 为什么有的 violation 返回多个 source_documents？
+核心技术：
+- 阿拉伯/中文数字自动转换（32 ↔ 三十二）
+- 文档名 + 条款号精确匹配（`min_should=1`）
+- `doc_article` 类型优先排序
 
-每个隐患会检索 **Top-3 最相关的文档**：
-- `source_documents[0]`：相关性最高（Rerank 分数最高）
-- `source_documents[1]`：相关性次之
-- `source_documents[2]`：相关性第三
+### Q2: 为什么回答中引用了多个文档？
 
-如果只检索到 1-2 个高分文档（≥0.3），则返回更少。
+每个问题会检索 **Top-5 最相关的文档**：
+1. 向量搜索（召回 500 个候选）
+2. 关键词匹配（文档名、条款号）
+3. 重排序过滤（Rerank ≥0.3）
+4. 精确匹配优先（`doc_article` 类型在前）
 
-### Q3: recommendations 是根据检索文档生成的吗？
-
-**是的**。生成逻辑：
-1. RAG 检索到相关安全规范文档（最多 1200 字符）
-2. LLM 基于文档内容 + 通用安全知识生成整改建议
-3. 如果文档明确写有整改措施，LLM 会直接引用
-
-### Q4: rule_reference 会编造标准吗？
-
-**不会**。System prompt 明确要求：
-- 判断文档是否与隐患相关
-- 不相关则返回："未检索到相关规范"
-- 相关则简要引用，包含文件名
-- **不要编造标准编号**
-
-### Q5: 如何清空所有文档？
+### Q3: 如何上传和管理文档？
 
 ```bash
-# 方法1: 使用脚本一键清空（推荐）
-./delete_all_documents.sh
+# 上传到 QA 知识库（推荐使用脚本）
+./upload_documents.sh -p qa data/法规文档/
 
-# 方法2: 删除 Qdrant collections（多集合版）
-curl -X DELETE "http://localhost:6333/collections/rag-regulations"
-curl -X DELETE "http://localhost:6333/collections/rag-hazard-db"
+# 或使用 API（支持批量 + skip_existing）
+curl -X POST "http://localhost:8080/api/qa/documents?skip_existing=true" \
+  -F "files=@安全生产法.pdf"
 
-# 方法3: 清空数据目录（最彻底）
-docker compose down
-rm -rf ./data/qdrant/
-docker compose up -d
+# 删除所有文档
+./delete_all_documents.sh -p qa
+
+# 查看文档列表
+curl "http://localhost:8080/api/qa/documents"
 ```
 
-### Q6: 服务启动失败怎么办？
+### Q4: 如何清空对话历史？
+
+Chainlit UI 支持：
+- **新建对话**：点击界面左上角的新建按钮
+- **历史记录**：系统自动保存最近 10 轮对话
+
+### Q5: 服务启动失败怎么办？
 
 ```bash
 # 1. 查看日志定位问题
+docker compose logs chainlit-ui
 docker compose logs safetyvision-api
 docker compose logs vllm-qwen-vl
-docker compose logs vllm-bge-m3
-docker compose logs vllm-bge-reranker
 
 # 2. 检查 GPU 状态
 nvidia-smi
@@ -444,56 +467,42 @@ nvidia-smi
 docker compose restart
 
 # 4. 完全重建
-docker compose down
-docker compose up -d --build
+docker compose down && docker compose up -d --build
 ```
 
-### Q7: 如何调整检索精度？
+### Q6: 如何调整检索精度？
 
-修改 `app/core/config.py` 中的阈值参数：
+修改 `app/core/config.py`：
 
 ```python
-# 更严格（精度高，召回低）
-retrieval_score_threshold: float = 0.5   # 提高到 0.5
-rerank_score_threshold: float = 0.4      # 提高到 0.4
-min_relevant_docs_per_hazard: int = 3    # 要求更多文档
+# 当前默认（平衡精度和召回）
+retrieval_score_threshold: float = 0.2   # 向量搜索阈值
+rerank_score_threshold: float = 0.3      # 重排序阈值
+fetch_k_multiplier: int = 100            # 召回倍数（k×100）
 
-# 更宽松（精度低，召回高）
-retrieval_score_threshold: float = 0.3   # 降低到 0.3
-rerank_score_threshold: float = 0.2      # 降低到 0.2
-fetch_k_multiplier: int = 100            # 增加召回量
+# 更严格（精度优先）
+retrieval_score_threshold: float = 0.3
+rerank_score_threshold: float = 0.4
 
-# 当前默认（平衡）
-retrieval_score_threshold: float = 0.4   # 硬阈值
-rerank_score_threshold: float = 0.3
-min_relevant_docs_per_hazard: int = 2
-fetch_k_multiplier: int = 50
+# 更宽松（召回优先）
+retrieval_score_threshold: float = 0.1
+rerank_score_threshold: float = 0.2
 ```
 
-### Q8: Excel 文档检索不准确怎么办？
+### Q7: 如何自定义 Chainlit UI？
 
-Excel 文档已独立存储在 `rag-hazard-db` 集合，并做了专门优化：
+```toml
+# 编辑 .chainlit/config.toml
+[UI]
+name = "安全生产大模型知识问答系统"  # 标题
+language = "zh-CN"                    # 界面语言
+# custom_css = "/public/custom.css"   # 自定义样式（可选）
 
-```python
-# 调整 Excel 分块策略（app/core/config.py）
-excel_rows_per_chunk: int = 5   # 减少到 5 行/块（更细粒度）
-
-# 调整关键字段过滤
-excel_key_fields: list[str] = [
-    "物品/设备名称", "危害", "个人防护装备（PPE）",
-    "安全措施", "应急措施", "法律法规", ...
-]  # 添加/删除字段以匹配您的 Excel 结构
+[features]
+latex = true                           # LaTeX 公式支持
 ```
 
-**验证 Excel 集合**：
-```bash
-# 查看 rag-hazard-db 集合统计
-curl "http://localhost:6333/collections/rag-hazard-db"
-
-# 测试 Excel 检索
-curl -X POST "http://localhost:8080/api/analysis/image" \
-  -F "file=@test_image.jpg" | jq '.violations[].source_documents'
-```
+创建中文欢迎页面：`chainlit_zh-CN.md`
 
 ## 🛠️ 开发指南
 
@@ -711,20 +720,20 @@ SafetyVision-RAG/
 ```
 
 **架构设计亮点**：
+- 💬 **Chainlit 2.9+**：现代化对话 UI，流式回答，LaTeX 公式，完整中文化
 - 🎯 **Clean Architecture**：领域驱动设计，依赖倒置
-- 🔌 **依赖注入**：FastAPI `Depends()`，易于测试和替换
-- 📦 **多集合策略**：规范文档与隐患数据库隔离，避免向量污染
+- 🔍 **混合检索**：向量 + 关键词 + 文档名过滤 + 精确匹配优先
+- 🔢 **智能数字转换**：阿拉伯/中文数字自动转换（32 ↔ 三十二）
 - ⚙️ **配置统一**：45+ 配置项集中管理，类型安全
-- 🧪 **测试友好**：服务层独立，支持 Mock 和单元测试
 - 🚀 **异步优先**：全异步设计，支持高并发
 
 ## 🔗 相关资源
 
-- [LangChain 官方文档](https://python.langchain.com)
-- [Qdrant 向量数据库](https://qdrant.tech)
-- [vLLM 推理引擎](https://github.com/vllm-project/vllm)
-- [FastAPI 文档](https://fastapi.tiangolo.com)
-- [Qwen-VL 模型](https://github.com/QwenLM/Qwen-VL)
+- [Chainlit 官方文档](https://docs.chainlit.io) - 对话 UI 框架
+- [LangChain](https://python.langchain.com) - LLM 应用框架
+- [Qdrant](https://qdrant.tech) - 向量数据库
+- [vLLM](https://github.com/vllm-project/vllm) - 高性能推理引擎
+- [Qwen-VL](https://github.com/QwenLM/Qwen-VL) - 多模态大模型
 
 ## 📄 许可证
 
@@ -732,48 +741,39 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ## 📝 更新日志
 
-### v3.0.0 (2025-12-15) - Multi-Collection & Code Quality Optimization
-**多集合架构：**
-- ✅ 双集合设计：`rag-regulations`（规范文档）+ `rag-hazard-db`（隐患数据库）
-- ✅ Excel 优化：10 行/块，16 个关键字段，独立存储避免污染
-- ✅ 智能路由：根据文件类型自动选择目标集合
-- ✅ 位置精确追踪：Excel 显示工作表+行范围，Markdown 显示章节标题
+### v3.1.0 (2025-12-17) - Chainlit UI & Hybrid Retrieval
+**Chainlit 对话界面：**
+- ✅ 流式对话 UI（`msg.stream_token()`）+ LaTeX 公式支持
+- ✅ 完整中文化（`language = "zh-CN"` + `chainlit_zh-CN.md`）
+- ✅ Starter 推荐问题（引导用户快速上手）
+- ✅ 对话历史管理（最近 10 轮消息，支持上下文连续对话）
+- ✅ 官方最佳实践（无需自定义 CSS hack）
 
-**配置整合：**
+**混合检索优化：**
+- ✅ 向量搜索 + 关键词匹配 + 文档名过滤
+- ✅ 精确定位支持：`《文档名》第X条` 查询
+- ✅ 阿拉伯/中文数字自动转换（32 ↔ 三十二）
+- ✅ `min_should` 过滤：强制匹配至少一个条款号
+- ✅ 精确匹配优先：`doc_article` 类型排在 rerank 之前
+- ✅ 检索阈值优化：相似度 0.2 + Rerank 0.3
+
+**配置与文档：**
+- ✅ `.gitignore` 优化：排除 `.chainlit/translations/`（自动生成）
+- ✅ README 更新：整合 Chainlit 架构，精简常见问题
+- ✅ 删除冗余文档：保留核心 README + Chainlit 欢迎页
+
+### v3.0.0 (2025-12-15) - Multi-Collection & Code Quality
+**核心功能：**
+- ✅ 双集合架构：`rag-qa-knowledge`（QA 知识库）
 - ✅ 45+ 配置项统一管理（`config.py`）
-- ✅ 13 个配置类别：API、Qdrant、Excel、VLM、LLM、RAG、多集合、文档格式、置信度、查询、分类
-- ✅ 类型安全的 Pydantic Settings
-- ✅ 环境变量优先级支持
+- ✅ Excel 优化：10 行/块，16 个关键字段
+- ✅ Markdown 支持：章节标题提取，HTML 清理
+- ✅ 动态召回：fetch_k = k × 100，提升检索覆盖
 
-**代码质量提升：**
-- ✅ 删除冗余代码：~50 行（retrieve_with_mmr、双重判断逻辑、LLM 后处理截断）
-- ✅ 简化判断逻辑：从双条件检查（max_score + len）改为单条件（len >= min_docs）
-- ✅ 移除无用截断：LLM 输出已在 Prompt 中限制长度，无需后处理
-- ✅ 性能提升：预计每个请求节省 ~35ms（逻辑简化 10ms + 截断移除 5ms×N）
-
-**文档支持增强：**
-- ✅ Markdown 支持：BeautifulSoup HTML 清理，章节标题提取
-- ✅ Excel 语义搜索：关键字段过滤（物品名称、危害、PPE、安全措施等）
-- ✅ PDF/Word/Excel 统一处理：工厂模式 + 元数据标准化
-
-**Token 预算优化：**
-- ✅ 适配 Qwen3-VL-4B（max_model_len=5840）
-- ✅ MAX_DOC_LENGTH: 600（单文档）
-- ✅ MAX_CONTEXT_LENGTH: 1000（总上下文）
-- ✅ max_tokens: 1500（LLM 输出）
-- ✅ 防止 "输出超长度限制" 错误
-
-**检索质量优化：**
-- ✅ 动态 fetch_k：k × 50（从 k × 10 提升）
-- ✅ 动态 rerank_top_n：k × 10（确保充足候选）
-- ✅ 硬阈值：score_threshold=0.4（从 0.5 降低，平衡精度和召回）
-- ✅ 最小文档数：min_docs=2（确保足够的上下文）
-
-**测试与工具：**
-- ✅ `delete_all_documents.sh`：一键清空所有集合
-- ✅ `upload_documents.sh`：批量上传测试数据
-- ✅ `test_collections.sh`：验证多集合功能
-- ✅ 完整的集合管理脚本
+**代码质量：**
+- ✅ 删除冗余代码 ~50 行（retrieve_with_mmr、双重判断）
+- ✅ 性能提升 ~35ms/请求
+- ✅ Clean Architecture 重构
 
 ### v2.0.0 (2025-12-03) - RAG Quality & Architecture Optimization
 **架构优化：**
