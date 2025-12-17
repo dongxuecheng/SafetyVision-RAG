@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from app.core.config import get_settings
 from app.core.deps import ensure_collection, get_qdrant_client
 from app.api.routes import documents, analysis
+from app.api import qa
 
 
 @asynccontextmanager
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(documents.router, prefix="/api")
     app.include_router(analysis.router, prefix="/api")
+    app.include_router(qa.router)  # QA router already has /api/qa prefix
 
     return app
 

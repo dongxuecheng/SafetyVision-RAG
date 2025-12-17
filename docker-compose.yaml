@@ -130,8 +130,8 @@ services:
     ports:
       - "8080:8000"
     volumes:
-      - ./app:/app/app:rw # 挂载应用代码，支持热更新
-      - ./file:/app/file:rw # 挂载文件目录，支持读写
+      - ./app:/app/app:ro # 应用代码只读（生产环境最佳实践）
+      - ./file:/app/file:rw # 文件上传目录读写
     environment:
       QDRANT_HOST: qdrant-server
       VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1
@@ -152,4 +152,37 @@ services:
         condition: service_healthy
       qdrant-server:
         condition: service_started
+    restart: unless-stopped
+
+  # (服务 6) Chainlit RAG QA Web UI
+  chainlit-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: safetyvision-rag:latest
+    container_name: chainlit-ui
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./app:/app/app:ro # 应用代码只读
+      - ./chainlit_app.py:/app/chainlit_app.py:ro # 主程序只读
+      - ./.chainlit:/app/.chainlit:rw # 配置目录读写
+      - ./public:/app/public:ro # 静态文件只读
+      - ./chainlit.md:/app/chainlit.md:ro # 欢迎页面只读
+    environment:
+      QDRANT_HOST: qdrant-server
+      VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1
+      VLLM_EMBED_URL: http://vllm-bge-m3:8000/v1
+      VLLM_RERANK_URL: http://vllm-bge-reranker:8000
+      QDRANT_COLLECTION: rag-test
+      VLLM_MODEL_NAME: /model/qwen3-vl-4b
+      VLLM_EMBED_MODEL: /model/bge-m3
+      VLLM_RERANK_MODEL: /model/bge-reranker-v2-m3
+      CHAINLIT_HOST: 0.0.0.0
+      CHAINLIT_PORT: 8000
+    command: ["chainlit", "run", "chainlit_app.py", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - ai-network
+    depends_on:
+      - safetyvision-api
     restart: unless-stopped

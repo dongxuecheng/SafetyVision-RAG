@@ -26,9 +26,20 @@ class DocumentService:
         self.embeddings = get_embeddings()
 
     async def upload_documents(
-        self, files: List[UploadFile], skip_existing: bool = True
+        self,
+        files: List[UploadFile],
+        skip_existing: bool = True,
+        purpose: str = "safety",
     ) -> List[DocumentDetail]:
-        """Upload and process multiple documents"""
+        """Upload and process multiple documents based on purpose
+
+        Args:
+            files: List of files to upload
+            skip_existing: Skip files that already exist
+            purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)
+                - qa: All files → qa collection
+                - safety: Excel → hazard_db, others → regulations
+        """
         if len(files) > self.settings.max_files:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -37,15 +48,21 @@ class DocumentService:
 
         details = []
         for file in files:
-            detail = await self._process_single_file(file, skip_existing)
+            detail = await self._process_single_file(file, skip_existing, purpose)
             details.append(detail)
 
         return details
 
     async def _process_single_file(
-        self, file: UploadFile, skip_existing: bool
+        self, file: UploadFile, skip_existing: bool, purpose: str = "safety"
     ) -> DocumentDetail:
-        """Process a single file"""
+        """Process a single file based on purpose
+
+        Args:
+            file: File to process
+            skip_existing: Skip if file already exists
+            purpose: 'qa' or 'safety'
+        """
         # Get file extension
         file_ext = Path(file.filename).suffix.lower()
 
@@ -65,32 +82,58 @@ class DocumentService:
                 filename=file.filename, status="failed", message="文件过大"
             )
 
-        # Determine which collection to use based on file type
-        if file_ext in [".xlsx", ".xls"]:
-            target_collection = self.settings.qdrant_collection_hazard_db
+        # Determine target collection based on purpose and file type
+        if purpose == "qa":
+            # QA system: all files go to qa collection
+            if file_ext in [".xlsx", ".xls"]:
+                return DocumentDetail(
+                    filename=file.filename,
+                    status="failed",
+                    message="QA系统不支持 Excel 文件，请使用 PDF/Word/Markdown 格式",
+                )
+            target_collection = self.settings.qdrant_collection_qa
+        elif purpose == "safety":
+            # Safety inspection: Excel → hazard_db, others → regulations
+            if file_ext in [".xlsx", ".xls"]:
+                target_collection = self.settings.qdrant_collection_hazard_db
+            else:
+                target_collection = self.settings.qdrant_collection_regulations
         else:
-            target_collection = self.settings.qdrant_collection_regulations
-
-        # Check if exists in the target collection
-        try:
-            result = self.client.scroll(
-                collection_name=target_collection,
-                scroll_filter={
-                    "must": [
-                        {"key": "metadata.filename", "match": {"value": file.filename}}
-                    ]
-                },
-                limit=1,
-                with_vectors=False,
+            return DocumentDetail(
+                filename=file.filename,
+                status="failed",
+                message=f"Invalid purpose: {purpose}. Must be 'qa' or 'safety'",
             )
 
-            if len(result[0]) > 0 and skip_existing:
-                return DocumentDetail(
-                    filename=file.filename, status="skipped", message="Already exists"
+        # Check if exists in the target collection (only if skip_existing is True)
+        if skip_existing:
+            try:
+                result = self.client.scroll(
+                    collection_name=target_collection,
+                    scroll_filter={
+                        "must": [
+                            {
+                                "key": "metadata.filename",
+                                "match": {"value": file.filename},
+                            }
+                        ]
+                    },
+                    limit=1,
+                    with_vectors=False,
                 )
-        except Exception as e:
-            # Collection might not exist yet, that's OK - will be created during upload
-            pass
+
+                # result is a tuple: (points, offset)
+                points = result[0]
+                if len(points) > 0:
+                    return DocumentDetail(
+                        filename=file.filename,
+                        status="skipped",
+                        message="Already exists",
+                    )
+            except Exception as e:
+                # Collection might not exist yet, that's OK - will be created during upload
+                # Or other errors during scroll - just continue with upload
+                pass
 
         # Process document
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
@@ -111,11 +154,8 @@ class DocumentService:
                 self.settings.chunk_overlap,
             )
 
-            # Determine which collection to use based on file type
-            if file_ext in [".xlsx", ".xls"]:
-                collection_name = self.settings.qdrant_collection_hazard_db
-            else:
-                collection_name = self.settings.qdrant_collection_regulations
+            # Use the target_collection determined earlier
+            collection_name = target_collection
 
             # Store in vector database (routed to appropriate collection)
             QdrantVectorStore.from_documents(
@@ -147,15 +187,24 @@ class DocumentService:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    def list_documents(self) -> List[DocumentInfo]:
-        """List all documents from all collections"""
+    def list_documents(self, purpose: str = "safety") -> List[DocumentInfo]:
+        """List documents by purpose
+
+        Args:
+            purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)
+        """
         all_docs = {}
 
-        # Query both collections
-        collections = [
-            self.settings.qdrant_collection_regulations,
-            self.settings.qdrant_collection_hazard_db,
-        ]
+        # Determine which collections to query based on purpose
+        if purpose == "qa":
+            collections = [self.settings.qdrant_collection_qa]
+        elif purpose == "safety":
+            collections = [
+                self.settings.qdrant_collection_regulations,
+                self.settings.qdrant_collection_hazard_db,
+            ]
+        else:
+            return []
 
         for collection_name in collections:
             # Check if collection exists
@@ -168,7 +217,7 @@ class DocumentService:
             while True:
                 points, offset = self.client.scroll(
                     collection_name=collection_name,
-                    limit=self.settings.qdrant_scroll_limit,
+                    limit=1000,  # 使用更大的 limit 提高效率
                     offset=offset,
                     with_payload=True,
                     with_vectors=False,
@@ -184,6 +233,7 @@ class DocumentService:
                     all_docs.setdefault(filename, 0)
                     all_docs[filename] += 1
 
+                # 继续获取直到 offset 为 None（表示没有更多数据）
                 if offset is None:
                     break
 
@@ -192,13 +242,27 @@ class DocumentService:
             for name, count in all_docs.items()
         ]
 
-    def delete_documents(self, filenames: List[str]) -> List[dict]:
-        """Delete documents by filename from both collections"""
+    def delete_documents(
+        self, filenames: List[str], purpose: str = "safety"
+    ) -> List[dict]:
+        """Delete documents by filename based on purpose
+
+        Args:
+            filenames: List of filenames to delete
+            purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)
+        """
         results = []
-        collections = [
-            self.settings.qdrant_collection_regulations,
-            self.settings.qdrant_collection_hazard_db,
-        ]
+
+        # Determine which collections to delete from based on purpose
+        if purpose == "qa":
+            collections = [self.settings.qdrant_collection_qa]
+        elif purpose == "safety":
+            collections = [
+                self.settings.qdrant_collection_regulations,
+                self.settings.qdrant_collection_hazard_db,
+            ]
+        else:
+            return [{"filename": f, "status": "invalid_purpose"} for f in filenames]
 
         for filename in filenames:
             total_removed = 0

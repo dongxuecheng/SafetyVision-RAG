@@ -1,0 +1,6 @@
+/* 隐藏首页 Chainlit 默认 logo */
+#welcome-screen img[alt*="logo"],
+#welcome-screen .logo,
+.chainlit-logo {
+    display: none !important;
+}
