@@ -26,14 +26,19 @@ class DocumentService:
         self.embeddings = get_embeddings()
 
     async def upload_documents(
-        self, files: List[UploadFile], skip_existing: bool = True, collection: str = "auto"
+        self,
+        files: List[UploadFile],
+        skip_existing: bool = True,
+        purpose: str = "safety",
     ) -> List[DocumentDetail]:
-        """Upload and process multiple documents to specified collection
-        
+        """Upload and process multiple documents based on purpose
+
         Args:
             files: List of files to upload
             skip_existing: Skip files that already exist
-            collection: Target collection - 'auto', 'regulations', 'hazard_db', or 'qa'
+            purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)
+                - qa: All files → qa collection
+                - safety: Excel → hazard_db, others → regulations
         """
         if len(files) > self.settings.max_files:
             raise HTTPException(
@@ -43,20 +48,20 @@ class DocumentService:
 
         details = []
         for file in files:
-            detail = await self._process_single_file(file, skip_existing, collection)
+            detail = await self._process_single_file(file, skip_existing, purpose)
             details.append(detail)
 
         return details
 
     async def _process_single_file(
-        self, file: UploadFile, skip_existing: bool, collection: str = "auto"
+        self, file: UploadFile, skip_existing: bool, purpose: str = "safety"
     ) -> DocumentDetail:
-        """Process a single file
-        
+        """Process a single file based on purpose
+
         Args:
             file: File to process
             skip_existing: Skip if file already exists
-            collection: Target collection - 'auto', 'regulations', 'hazard_db', or 'qa'
+            purpose: 'qa' or 'safety'
         """
         # Get file extension
         file_ext = Path(file.filename).suffix.lower()
@@ -77,24 +82,27 @@ class DocumentService:
                 filename=file.filename, status="failed", message="文件过大"
             )
 
-        # Determine which collection to use
-        if collection == "auto":
-            # Auto-detect based on file type (backward compatibility)
+        # Determine target collection based on purpose and file type
+        if purpose == "qa":
+            # QA system: all files go to qa collection
+            if file_ext in [".xlsx", ".xls"]:
+                return DocumentDetail(
+                    filename=file.filename,
+                    status="failed",
+                    message="QA系统不支持 Excel 文件，请使用 PDF/Word/Markdown 格式",
+                )
+            target_collection = self.settings.qdrant_collection_qa
+        elif purpose == "safety":
+            # Safety inspection: Excel → hazard_db, others → regulations
             if file_ext in [".xlsx", ".xls"]:
                 target_collection = self.settings.qdrant_collection_hazard_db
             else:
                 target_collection = self.settings.qdrant_collection_regulations
-        elif collection == "regulations":
-            target_collection = self.settings.qdrant_collection_regulations
-        elif collection == "hazard_db":
-            target_collection = self.settings.qdrant_collection_hazard_db
-        elif collection == "qa":
-            target_collection = self.settings.qdrant_collection_qa
         else:
             return DocumentDetail(
                 filename=file.filename,
                 status="failed",
-                message=f"Invalid collection: {collection}. Must be 'auto', 'regulations', 'hazard_db', or 'qa'",
+                message=f"Invalid purpose: {purpose}. Must be 'qa' or 'safety'",
             )
 
         # Check if exists in the target collection
@@ -170,27 +178,22 @@ class DocumentService:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    def list_documents(self, collection: str = "all") -> List[DocumentInfo]:
-        """List documents from specified collection(s)
-        
+    def list_documents(self, purpose: str = "safety") -> List[DocumentInfo]:
+        """List documents by purpose
+
         Args:
-            collection: 'all', 'regulations', 'hazard_db', or 'qa'
+            purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)
         """
         all_docs = {}
 
-        # Determine which collections to query
-        if collection == "all":
+        # Determine which collections to query based on purpose
+        if purpose == "qa":
+            collections = [self.settings.qdrant_collection_qa]
+        elif purpose == "safety":
             collections = [
                 self.settings.qdrant_collection_regulations,
                 self.settings.qdrant_collection_hazard_db,
-                self.settings.qdrant_collection_qa,
             ]
-        elif collection == "regulations":
-            collections = [self.settings.qdrant_collection_regulations]
-        elif collection == "hazard_db":
-            collections = [self.settings.qdrant_collection_hazard_db]
-        elif collection == "qa":
-            collections = [self.settings.qdrant_collection_qa]
         else:
             return []
 
@@ -229,30 +232,27 @@ class DocumentService:
             for name, count in all_docs.items()
         ]
 
-    def delete_documents(self, filenames: List[str], collection: str = "all") -> List[dict]:
-        """Delete documents by filename from specified collection(s)
-        
+    def delete_documents(
+        self, filenames: List[str], purpose: str = "safety"
+    ) -> List[dict]:
+        """Delete documents by filename based on purpose
+
         Args:
             filenames: List of filenames to delete
-            collection: 'all', 'regulations', 'hazard_db', or 'qa'
+            purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)
         """
         results = []
-        
-        # Determine which collections to delete from
-        if collection == "all":
+
+        # Determine which collections to delete from based on purpose
+        if purpose == "qa":
+            collections = [self.settings.qdrant_collection_qa]
+        elif purpose == "safety":
             collections = [
                 self.settings.qdrant_collection_regulations,
                 self.settings.qdrant_collection_hazard_db,
-                self.settings.qdrant_collection_qa,
             ]
-        elif collection == "regulations":
-            collections = [self.settings.qdrant_collection_regulations]
-        elif collection == "hazard_db":
-            collections = [self.settings.qdrant_collection_hazard_db]
-        elif collection == "qa":
-            collections = [self.settings.qdrant_collection_qa]
         else:
-            return [{"filename": f, "status": "invalid_collection"} for f in filenames]
+            return [{"filename": f, "status": "invalid_purpose"} for f in filenames]
 
         for filename in filenames:
             total_removed = 0
