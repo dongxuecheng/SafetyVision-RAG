@@ -57,6 +57,12 @@ class ExcelProcessor(DocumentProcessor):
             # 第一行作为表头
             headers = [str(h).strip() if h else "" for h in rows[0]]
 
+            # 过滤掉空表头
+            non_empty_headers = [h for h in headers if h]
+            if not non_empty_headers:
+                # 如果表头全是空的，跳过这个sheet
+                continue
+
             # Filter headers: only keep key fields
             key_indices = [
                 i
@@ -65,8 +71,8 @@ class ExcelProcessor(DocumentProcessor):
             ]
 
             if not key_indices:
-                # If no key fields found, use all fields (fallback)
-                key_indices = list(range(len(headers)))
+                # If no key fields found, use all non-empty fields (fallback)
+                key_indices = [i for i, h in enumerate(headers) if h]
 
             # 批量处理数据行：每 N 行合并为一个 chunk
             data_rows = rows[1:]
@@ -167,6 +173,12 @@ class LegacyExcelProcessor(DocumentProcessor):
                 for col in range(sheet.ncols)
             ]
 
+            # 过滤掉空表头
+            non_empty_headers = [h for h in headers if h]
+            if not non_empty_headers:
+                # 如果表头全是空的，跳过这个sheet
+                continue
+
             # Filter headers: only keep key fields
             key_indices = [
                 i
@@ -175,8 +187,8 @@ class LegacyExcelProcessor(DocumentProcessor):
             ]
 
             if not key_indices:
-                # If no key fields found, use all fields (fallback)
-                key_indices = list(range(len(headers)))
+                # If no key fields found, use all non-empty fields (fallback)
+                key_indices = [i for i, h in enumerate(headers) if h]
 
             # 批量处理数据行：每 N 行合并为一个 chunk
             total_rows = sheet.nrows - 1  # Excluding header

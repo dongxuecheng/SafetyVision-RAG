@@ -170,6 +170,15 @@ class DocumentService:
                 self.settings.chunk_overlap,
             )
 
+            # Check if any chunks were generated
+            if len(chunks) == 0:
+                return DocumentDetail(
+                    filename=file.filename,
+                    status="failed",
+                    chunks=0,
+                    message="文件处理失败：未能提取有效/相关内容，请确保文件内容有效/相关。",
+                )
+
             # Use the target_collection determined earlier
             collection_name = target_collection
 
