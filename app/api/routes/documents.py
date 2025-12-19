@@ -5,9 +5,14 @@ API routes for document operations
 from typing import List
 from fastapi import APIRouter, UploadFile, File, Query, Depends
 
-from app.schemas.safety import DocumentUploadResponse, DocumentInfo
+from app.schemas.safety import (
+    DocumentUploadResponse,
+    DocumentInfo,
+    PaginatedDocuments,
+)
 from app.services.document_service import DocumentService
 from app.core.deps import get_document_service
+from app.core.config import get_settings
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -38,21 +43,33 @@ async def upload_documents(
     )
 
 
-@router.get("", response_model=List[DocumentInfo])
+@router.get("", response_model=PaginatedDocuments)
 async def list_documents(
     purpose: str = Query(
         "safety",
         description="Document purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)",
         regex="^(qa|safety)$",
     ),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(
+        None,
+        ge=1,
+        le=100,
+        description="Items per page (default from settings, max 100)",
+    ),
     service: DocumentService = Depends(get_document_service),
 ):
-    """List documents by purpose
+    """List documents by purpose with pagination
 
     - **qa**: Lists documents from qa collection
     - **safety**: Lists documents from regulations + hazard_db collections
+    - **page**: Page number starting from 1
+    - **page_size**: Number of items per page (default 20, max 100)
     """
-    return service.list_documents(purpose)
+    settings = get_settings()
+    if page_size is None:
+        page_size = settings.documents_default_page_size
+    return service.list_documents_paginated(purpose, page, page_size)
 
 
 @router.delete("")

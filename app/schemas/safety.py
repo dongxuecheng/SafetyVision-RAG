@@ -135,6 +135,16 @@ class DocumentInfo(BaseModel):
     chunks_count: int
 
 
+class PaginatedDocuments(BaseModel):
+    """Paginated documents response"""
+
+    total: int = Field(description="Total number of documents")
+    page: int = Field(ge=1, description="Current page number (1-indexed)")
+    page_size: int = Field(ge=1, le=100, description="Number of items per page")
+    total_pages: int = Field(ge=0, description="Total number of pages")
+    items: List[DocumentInfo] = Field(description="Documents in current page")
+
+
 class DocumentDeleteResult(BaseModel):
     """Document deletion result"""
 

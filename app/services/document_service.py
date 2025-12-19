@@ -188,7 +188,7 @@ class DocumentService:
             Path(tmp_path).unlink(missing_ok=True)
 
     def list_documents(self, purpose: str = "safety") -> List[DocumentInfo]:
-        """List documents by purpose
+        """List all documents by purpose (non-paginated, kept for backward compatibility)
 
         Args:
             purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)
@@ -241,6 +241,43 @@ class DocumentService:
             DocumentInfo(filename=name, chunks_count=count)
             for name, count in all_docs.items()
         ]
+
+    def list_documents_paginated(
+        self, purpose: str = "safety", page: int = 1, page_size: int = 20
+    ):
+        """List documents by purpose with pagination
+
+        Args:
+            purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)
+            page: Page number (1-indexed)
+            page_size: Number of items per page
+
+        Returns:
+            PaginatedDocuments with total, page info, and items
+        """
+        from app.schemas.safety import PaginatedDocuments
+        import math
+
+        # Get all documents first (using existing method)
+        all_documents = self.list_documents(purpose)
+
+        # Calculate pagination
+        total = len(all_documents)
+        total_pages = math.ceil(total / page_size) if total > 0 else 0
+
+        # Calculate offset
+        offset = (page - 1) * page_size
+
+        # Slice documents for current page
+        paginated_items = all_documents[offset : offset + page_size]
+
+        return PaginatedDocuments(
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+            items=paginated_items,
+        )
 
     def delete_documents(
         self, filenames: List[str], purpose: str = "safety"

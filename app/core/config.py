@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     qdrant_scroll_limit: int = 100  # Default scroll limit for listing documents
     qdrant_scroll_limit_large: int = 10000  # Limit for bulk operations (delete)
 
+    # Document List Pagination Settings
+    documents_default_page_size: int = 20  # Default items per page
+    documents_max_page_size: int = 100  # Maximum items per page
+    documents_min_page_size: int = 1  # Minimum items per page
+
     # Hazard Classification Settings
     hazard_categories: List[str] = [
         "安全管理",
