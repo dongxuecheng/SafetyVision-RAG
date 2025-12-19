@@ -2,7 +2,7 @@
 # 删除所有已上传的文档
 
 # 默认配置
-DEFAULT_PROJECT="hazard"  # 默认项目：hazard (隐患识别) 或 qa (知识问答)
+DEFAULT_PROJECT="safety"  # 默认项目：safety (隐患识别) 或 qa (知识问答)
 
 # 使用方法
 usage() {
@@ -10,7 +10,7 @@ usage() {
     echo ""
     echo "选项:"
     echo "  -p, --project <项目>  指定项目类型:"
-    echo "                          hazard  - 隐患识别 (默认，删除 rag-regulations + rag-hazard-db)"
+    echo "                          safety  - 隐患识别 (默认，删除 rag-regulations + rag-hazard-db)"
     echo "                          qa      - RAG知识问答 (删除 rag-qa-knowledge)"
     echo "                          all     - 所有项目 (删除所有 collections)"
     echo "  -h, --help            显示此帮助信息"
@@ -19,7 +19,7 @@ usage() {
     echo "  $0                      # 删除隐患识别项目文档（默认）"
     echo "  $0 -p qa                # 删除RAG知识问答项目文档"
     echo "  $0 -p all               # 删除所有项目文档"
-    echo "  $0 --project hazard     # 删除隐患识别项目文档"
+    echo "  $0 --project safety     # 删除隐患识别项目文档"
     exit 1
 }
 
@@ -42,9 +42,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 验证项目类型
-if [ "$PROJECT" != "hazard" ] && [ "$PROJECT" != "qa" ] && [ "$PROJECT" != "all" ]; then
+if [ "$PROJECT" != "safety" ] && [ "$PROJECT" != "qa" ] && [ "$PROJECT" != "all" ]; then
     echo "❌ 错误: 无效的项目类型 '$PROJECT'"
-    echo "   支持的项目: hazard, qa, all"
+    echo "   支持的项目: safety, qa, all"
     echo ""
     usage
 fi

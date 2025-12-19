@@ -4,7 +4,7 @@
 # 默认配置
 API_URL="http://localhost:8080"
 DEFAULT_DIR="/home/xcd/SafetyVision-RAG/file"
-DEFAULT_PROJECT="hazard"  # 默认项目：hazard (隐患识别) 或 qa (知识问答)
+DEFAULT_PROJECT="safety"  # 默认项目：safety (隐患识别) 或 qa (知识问答)
 
 # 使用方法
 usage() {
@@ -12,7 +12,7 @@ usage() {
     echo ""
     echo "选项:"
     echo "  -p, --project <项目>  指定项目类型:"
-    echo "                          hazard  - 隐患识别 (默认，使用 rag-regulations + rag-hazard-db)"
+    echo "                          safety  - 隐患识别 (默认，使用 rag-regulations + rag-hazard-db)"
     echo "                          qa      - RAG知识问答 (使用 rag-qa-knowledge)"
     echo "  -f, --force           强制上传，不跳过已存在文件 (默认会跳过)"
     echo "  -h, --help            显示此帮助信息"
@@ -24,7 +24,7 @@ usage() {
     echo "  $0                                    # 上传到隐患识别项目（默认）"
     echo "  $0 -p qa                              # 上传到RAG知识问答项目"
     echo "  $0 -p qa --force                      # 强制上传，不跳过已存在文件"
-    echo "  $0 -p hazard /path/to/documents       # 上传指定文件夹到隐患识别"
+    echo "  $0 -p safety /path/to/documents       # 上传指定文件夹到隐患识别"
     echo "  $0 --project qa /path/to/documents    # 上传指定文件夹到知识问答"
     echo ""
     echo "支持的文件类型: .pdf .docx .doc .xlsx .xls .md .markdown"
@@ -58,9 +58,9 @@ done
 DOC_DIR="${DOC_DIR:-$DEFAULT_DIR}"
 
 # 验证项目类型
-if [ "$PROJECT" != "hazard" ] && [ "$PROJECT" != "qa" ]; then
+if [ "$PROJECT" != "safety" ] && [ "$PROJECT" != "qa" ]; then
     echo "❌ 错误: 无效的项目类型 '$PROJECT'"
-    echo "   支持的项目: hazard, qa"
+    echo "   支持的项目: safety, qa"
     echo ""
     usage
 fi
