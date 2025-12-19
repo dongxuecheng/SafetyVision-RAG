@@ -10,6 +10,7 @@ qdrant-client
 pydantic
 python-multipart
 pypdf
+PyMuPDF>=1.23.0
 openpyxl
 python-docx
 xlrd
