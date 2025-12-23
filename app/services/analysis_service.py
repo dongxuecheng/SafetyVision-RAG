@@ -275,8 +275,7 @@ class AnalysisService:
                 row_info = row_range if row_range else f"{row}"
                 location = f"工作表: {sheet}, 行: {row_info}"
             elif page is not None:
-                # PyPDFLoader uses 0-based indexing, but PDF readers show 1-based page numbers
-                # So we add 1 to match what users see in PDF viewers
+                # PDF page metadata uses 0-based indexing, convert to 1-based for display
                 location = f"页码: {page + 1}"
             elif section:
                 location = f"章节: {section}"

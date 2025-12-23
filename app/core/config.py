@@ -68,7 +68,7 @@ class Settings(BaseSettings):
 
     # LLM Settings
     llm_temperature: float = 0.0
-    llm_max_tokens: int = 4096  # Max tokens for LLM response
+    llm_max_tokens: int = 3500  # Max tokens for LLM response (8192 - ~4500 input max)
 
     # RAG Retrieval Settings
     retrieval_score_threshold: float = 0.2  # Lowered: Let reranker do the filtering

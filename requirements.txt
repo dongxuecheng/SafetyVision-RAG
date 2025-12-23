@@ -9,8 +9,8 @@ langchain-text-splitters
 qdrant-client
 pydantic
 python-multipart
-pypdf
 PyMuPDF>=1.23.0
+pymupdf4llm>=0.0.5
 openpyxl
 python-docx
 xlrd

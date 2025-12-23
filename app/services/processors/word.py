@@ -50,7 +50,7 @@ class WordProcessor(DocumentProcessor):
 
 
 class LegacyWordProcessor(DocumentProcessor):
-    """旧版Word (.doc) 处理：优先使用LibreOffice，fallback到antiword"""
+    """旧版Word (.doc) 处理：使用LibreOffice转换"""
 
     @staticmethod
     def _try_libreoffice_convert(file_path: str) -> str:
@@ -133,9 +133,75 @@ class LegacyWordProcessor(DocumentProcessor):
 
                 converted_docx = docx_files[0]
 
-                # 使用 python-docx 提取文本
+                # 使用 python-docx 提取文本（增强版：包含表格、页眉页脚）
                 doc = DocxDocument(str(converted_docx))
-                content = "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
+
+                # 0. 获取所有表格的段落集合（避免重复提取）
+                table_paragraphs = set()
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for paragraph in cell.paragraphs:
+                                table_paragraphs.add(paragraph)
+
+                # 1. 提取段落（排除表格内的段落）
+                paragraphs = [
+                    p.text
+                    for p in doc.paragraphs
+                    if p.text.strip() and p not in table_paragraphs
+                ]
+
+                # 2. 提取表格（Markdown 格式，含表头）
+                tables_text = []
+                for table in doc.tables:
+                    # 检查表格是否为空
+                    if not any(
+                        cell.text.strip() for row in table.rows for cell in row.cells
+                    ):
+                        continue
+
+                    # 提取表头（第一行）
+                    if len(table.rows) > 0:
+                        first_row = table.rows[0]
+                        seen_cells = set()
+                        header_cells = []
+
+                        for cell in first_row.cells:
+                            cell_id = id(cell)
+                            if cell_id not in seen_cells:
+                                header_cells.append(cell.text.strip())
+                                seen_cells.add(cell_id)
+
+                        if header_cells:
+                            # 添加表头行
+                            tables_text.append(" | ".join(header_cells))
+                            # 添加分隔符行
+                            tables_text.append(" | ".join(["---"] * len(header_cells)))
+
+                    # 提取数据行（从第二行开始）
+                    for row in table.rows[1:]:
+                        seen_cells = set()
+                        row_cells = []
+
+                        for cell in row.cells:
+                            # 使用单元格对象 ID 去重（合并单元格会重复）
+                            cell_id = id(cell)
+                            if cell_id not in seen_cells:
+                                row_cells.append(cell.text.strip())
+                                seen_cells.add(cell_id)
+
+                        # 只添加非空行
+                        if any(row_cells):
+                            tables_text.append(" | ".join(row_cells))
+
+                    # 表格后添加空行分隔
+                    tables_text.append("")
+
+                # 3. 合并所有内容（段落 + 表格）
+                all_parts = paragraphs + tables_text
+
+                # 合并为最终内容
+                content = "\n\n".join(all_parts)
 
                 if not content or not content.strip():
                     raise ValueError("转换后的文档内容为空")
@@ -150,58 +216,6 @@ class LegacyWordProcessor(DocumentProcessor):
                 raise ValueError(f"LibreOffice 处理出错: {str(e)}")
 
     @staticmethod
-    def _try_antiword(file_path: str) -> str:
-        """
-        使用 antiword 提取 .doc 文本（fallback方案）
-
-        antiword 限制：
-        - 不支持 Visio 图、OLE 对象
-        - 不支持横向页面
-        - 只支持简单的 Word 97-2003 格式
-
-        Args:
-            file_path: .doc 文件路径
-
-        Returns:
-            提取的文本内容
-
-        Raises:
-            ValueError: 提取失败
-        """
-        antiword_path = shutil.which("antiword")
-        if not antiword_path:
-            raise ValueError("antiword 工具未安装。请安装: apt-get install antiword")
-
-        try:
-            result = subprocess.run(
-                [antiword_path, file_path],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                check=False,
-            )
-
-            if result.returncode != 0:
-                error_msg = result.stderr.strip() if result.stderr else "未知错误"
-                raise ValueError(
-                    f"antiword 执行失败 (返回码: {result.returncode}): {error_msg}"
-                )
-
-            content = result.stdout
-
-            if not content or not content.strip():
-                raise ValueError("antiword 无法提取文本，文件可能为空或格式不支持")
-
-            return content
-
-        except subprocess.TimeoutExpired:
-            raise ValueError("antiword 处理超时（超过60秒）")
-        except Exception as e:
-            if isinstance(e, ValueError):
-                raise
-            raise ValueError(f"antiword 处理出错: {str(e)}")
-
-    @staticmethod
     def process(
         file_path: str,
         metadata: Dict[str, Any],
@@ -209,11 +223,12 @@ class LegacyWordProcessor(DocumentProcessor):
         chunk_overlap: int = 200,
     ) -> List[Document]:
         """
-        Process legacy DOC file with fallback strategy
+        Process legacy DOC file using LibreOffice
 
-        策略：
-        1. 优先使用 LibreOffice（支持复杂格式）
-        2. LibreOffice 失败时 fallback 到 antiword（仅支持简单格式）
+        使用 LibreOffice 处理 .doc 文件，支持：
+        - Visio 嵌入图、OLE 对象
+        - 横向页面和复杂布局
+        - 所有 Word 97-2003 及更新格式
 
         Args:
             file_path: Path to DOC file
@@ -225,34 +240,15 @@ class LegacyWordProcessor(DocumentProcessor):
             List of Document objects with chunked content
 
         Raises:
-            ValueError: If all conversion methods fail
+            ValueError: If conversion fails
         """
-        content = None
-        errors = []
-
-        # 策略1: 尝试 LibreOffice（推荐，支持复杂文档）
         try:
             content = LegacyWordProcessor._try_libreoffice_convert(file_path)
             metadata["conversion_method"] = "libreoffice"
         except ValueError as e:
-            errors.append(f"LibreOffice: {str(e)}")
-
-        # 策略2: LibreOffice 失败，尝试 antiword（fallback）
-        if not content:
-            try:
-                content = LegacyWordProcessor._try_antiword(file_path)
-                metadata["conversion_method"] = "antiword"
-            except ValueError as e:
-                errors.append(f"antiword: {str(e)}")
-
-        # 所有方法都失败
-        if not content:
-            error_summary = "\n".join(f"  - {err}" for err in errors)
             raise ValueError(
-                f"处理 .doc 文件失败，已尝试所有方法:\n{error_summary}\n\n"
-                f"建议：\n"
-                f"1. 如果文档包含 Visio图/复杂对象，请安装 LibreOffice\n"
-                f"2. 或将 .doc 文件手动转换为 .docx 格式后重新上传"
+                f"处理 .doc 文件失败: {str(e)}\n\n"
+                f"建议：请将 .doc 文件手动转换为 .docx 格式后重新上传"
             )
 
         document = Document(page_content=content, metadata=metadata)
