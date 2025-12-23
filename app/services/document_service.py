@@ -253,11 +253,14 @@ class DocumentService:
             # 这样可以避免处理损坏或格式异常的PDF
             return True
 
-    def list_documents(self, purpose: str = "safety") -> List[DocumentInfo]:
+    def list_documents(
+        self, purpose: str = "safety", filename_search: str = None
+    ) -> List[DocumentInfo]:
         """List all documents by purpose (non-paginated, kept for backward compatibility)
 
         Args:
             purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)
+            filename_search: Optional search string to filter filenames (case-insensitive)
         """
         all_docs = {}
 
@@ -296,6 +299,14 @@ class DocumentService:
                     filename = point.payload.get("metadata", {}).get(
                         "filename", "unknown"
                     )
+
+                    # Apply filename filter if provided (case-insensitive)
+                    if (
+                        filename_search
+                        and filename_search.lower() not in filename.lower()
+                    ):
+                        continue
+
                     all_docs.setdefault(filename, 0)
                     all_docs[filename] += 1
 
@@ -309,14 +320,19 @@ class DocumentService:
         ]
 
     def list_documents_paginated(
-        self, purpose: str = "safety", page: int = 1, page_size: int = 20
+        self,
+        purpose: str = "safety",
+        page: int = 1,
+        page_size: int = 20,
+        filename_search: str = None,
     ):
-        """List documents by purpose with pagination
+        """List documents by purpose with pagination and optional filename search
 
         Args:
             purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)
             page: Page number (1-indexed)
             page_size: Number of items per page
+            filename_search: Optional search string to filter filenames (case-insensitive)
 
         Returns:
             PaginatedDocuments with total, page info, and items
@@ -324,8 +340,8 @@ class DocumentService:
         from app.schemas.safety import PaginatedDocuments
         import math
 
-        # Get all documents first (using existing method)
-        all_documents = self.list_documents(purpose)
+        # Get all documents first (using existing method with search filter)
+        all_documents = self.list_documents(purpose, filename_search)
 
         # Calculate pagination
         total = len(all_documents)

@@ -57,19 +57,24 @@ async def list_documents(
         le=100,
         description="Items per page (default from settings, max 100)",
     ),
+    search: str = Query(
+        None,
+        description="Search filter: returns only documents whose filename contains this string (case-insensitive)",
+    ),
     service: DocumentService = Depends(get_document_service),
 ):
-    """List documents by purpose with pagination
+    """List documents by purpose with pagination and optional search filter
 
     - **qa**: Lists documents from qa collection
     - **safety**: Lists documents from regulations + hazard_db collections
     - **page**: Page number starting from 1
     - **page_size**: Number of items per page (default 20, max 100)
+    - **search**: Optional filename search filter (e.g., '脚手架' returns files containing '脚手架')
     """
     settings = get_settings()
     if page_size is None:
         page_size = settings.documents_default_page_size
-    return service.list_documents_paginated(purpose, page, page_size)
+    return service.list_documents_paginated(purpose, page, page_size, search)
 
 
 @router.delete("")

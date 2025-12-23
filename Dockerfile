@@ -6,9 +6,19 @@ WORKDIR /app
 RUN sed -i 's|http://deb.debian.org|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources && \
     sed -i 's|http://security.debian.org|https://mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
 
-# 安装 curl 和 antiword (用于健康检查和.doc文档转换)
+# 安装系统依赖
+# - curl: 健康检查
+# - antiword: .doc文档转换（fallback方案）
+# - libreoffice-writer: 处理复杂.doc文件（推荐，支持Visio图、横向页面等）
+# - libreoffice-common: LibreOffice核心组件
+# - default-jre-headless: LibreOffice运行时依赖（精简版，无GUI）
 RUN apt-get update && \
-    apt-get install -y curl antiword && \
+    apt-get install -y \
+    curl \
+    antiword \
+    libreoffice-writer \
+    libreoffice-common \
+    default-jre-headless && \
     rm -rf /var/lib/apt/lists/*
 
 # 设置 pip 使用清华源
