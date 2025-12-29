@@ -48,10 +48,10 @@ class Settings(BaseSettings):
     # Aliyun DashScope API Settings
     dashscope_api_key: str = ""  # Set via environment variable DASHSCOPE_API_KEY
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    
+
     # VLM Model for Image Analysis (Multimodal)
     vlm_model_name: str = "qwen3-vl-plus"  # Aliyun multimodal model
-    
+
     # LLM Model for RAG QA (Text-only)
     llm_model_name: str = "qwen3-max-preview"  # Aliyun text model
 

@@ -72,8 +72,6 @@ services:
     command:
       - --model
       - /model/bge-reranker-v2-m3
-      - --task
-      - score
       - --gpu-memory-utilization
       - "0.3"
     networks:
@@ -91,7 +89,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: safetyvision-rag:aliyun
+    image: safetyvision-rag:latest
     container_name: safetyvision-api
     ports:
       - "8080:8000"
@@ -129,7 +127,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: safetyvision-rag:aliyun
+    image: safetyvision-rag:latest
     container_name: chainlit-ui
     ports:
       - "25810:8000"

@@ -11,6 +11,7 @@ Implements RAG following LangChain v1.0+ best practices:
 
 import base64
 import asyncio
+import json
 from typing import List
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -64,9 +65,6 @@ class AnalysisService:
         # Backward compatibility
         self.retriever = self.regulations_retriever
 
-        # Structured LLMs for different outputs
-        # Use VLM for image-based hazard extraction
-        self.hazards_llm = self.vlm.with_structured_output(HazardList)
         # Use text LLM for violation generation (RAG-based)
         self.violation_llm = self.llm.with_structured_output(SafetyViolationLLM)
 
@@ -147,13 +145,39 @@ class AnalysisService:
 
     async def _extract_hazards_as_list(self, image_b64: str) -> List[str]:
         """
-        Extract hazards from image as structured list using VLM
+        Extract hazards from image as structured list using VLM with function calling
 
+        Uses Aliyun's function calling API for structured output.
         Returns list of hazard descriptions (e.g., ["未佩戴安全帽", "高空作业无安全带"])
         """
+        # Define function calling schema
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "report_hazards",
+                    "description": "报告识别到的安全隐患列表",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "hazards": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "安全隐患列表，每项是一个清晰的隐患描述",
+                            }
+                        },
+                        "required": ["hazards"],
+                    },
+                },
+            }
+        ]
+
         messages = [
             SystemMessage(
                 content="""你是专业的安全检查员，严格识别图片中真实存在的安全隐患。
+
+【重要】如果图片中存在多个隐患，必须全部列出，不要遗漏！
+
 要求：
 1. 必须有清晰明确的视觉证据
 2. 禁止猜测或推测可能存在的隐患
@@ -161,8 +185,10 @@ class AnalysisService:
 4. 每条隐患用精确语言描述（10-30字，包含具体细节）
 5. 按严重程度排序
 6. 返回 0-5 个最关键的隐患
+7. 【关键】hazards数组中应包含所有识别到的隐患，不要只返回最严重的一个
 
-如果图片中没有明确的安全隐患，返回空列表（hazards: []）。
+如果图片中没有明确的安全隐患，返回空列表。
+请使用 report_hazards 函数报告识别到的全部隐患。
 """
             ),
             HumanMessage(
@@ -180,10 +206,27 @@ class AnalysisService:
         ]
 
         try:
-            result = await self.hazards_llm.ainvoke(messages)
-            print(result)
-            return result.hazards
+            # Use bind_tools to attach function calling schema
+            vlm_with_tools = self.vlm.bind_tools(tools, tool_choice="auto")
+            result = await vlm_with_tools.ainvoke(messages)
+
+            print(f"VLM response: {result}")
+
+            # Extract hazards from function call
+            if hasattr(result, "tool_calls") and result.tool_calls:
+                for tool_call in result.tool_calls:
+                    if tool_call.get("name") == "report_hazards":
+                        args = tool_call.get("args", {})
+                        hazards = args.get("hazards", [])
+                        print(f"Extracted hazards: {hazards}")
+                        return hazards
+
+            # No function call - return empty
+            print("No tool_calls in response, returning empty list")
+            return []
+
         except Exception as e:
+            print(f"Error in _extract_hazards_as_list: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"VLM 隐患提取失败: {str(e)}",
