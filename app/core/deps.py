@@ -21,13 +21,44 @@ def get_qdrant_client() -> QdrantClient:
 
 @lru_cache()
 def get_llm() -> ChatOpenAI:
-    """Get LLM instance"""
+    """Get LLM instance for RAG QA (Aliyun DashScope API)"""
     settings = get_settings()
+    import os
+    api_key = settings.dashscope_api_key or os.getenv("DASHSCOPE_API_KEY", "")
+    
+    if not api_key:
+        raise ValueError(
+            "DashScope API Key not found. "
+            "Please set DASHSCOPE_API_KEY environment variable or configure it in settings."
+        )
+    
     return ChatOpenAI(
-        model_name=settings.vllm_model_name,
-        api_key="not-needed",
-        base_url=settings.vllm_chat_url,
+        model_name=settings.llm_model_name,
+        api_key=api_key,
+        base_url=settings.dashscope_base_url,
         temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
+    )
+
+
+@lru_cache()
+def get_vlm() -> ChatOpenAI:
+    """Get VLM instance for image analysis (Aliyun DashScope Multimodal API)"""
+    settings = get_settings()
+    import os
+    api_key = settings.dashscope_api_key or os.getenv("DASHSCOPE_API_KEY", "")
+    
+    if not api_key:
+        raise ValueError(
+            "DashScope API Key not found. "
+            "Please set DASHSCOPE_API_KEY environment variable or configure it in settings."
+        )
+    
+    return ChatOpenAI(
+        model_name=settings.vlm_model_name,
+        api_key=api_key,
+        base_url=settings.dashscope_base_url,
+        temperature=settings.vlm_temperature,
         max_tokens=settings.llm_max_tokens,
     )
 

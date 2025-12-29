@@ -17,7 +17,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.documents import Document
 from fastapi import UploadFile, HTTPException, status
 
-from app.core.deps import get_llm, get_vector_store
+from app.core.deps import get_llm, get_vlm, get_vector_store
 from app.core.config import get_settings
 from app.core.retrieval import SafetyRetriever
 from app.schemas.safety import (
@@ -41,7 +41,8 @@ class AnalysisService:
     """
 
     def __init__(self):
-        self.llm = get_llm()
+        self.llm = get_llm()  # For RAG QA generation
+        self.vlm = get_vlm()  # For image analysis (multimodal)
         self.settings = get_settings()
 
         # Load formatting constants from config
@@ -64,8 +65,9 @@ class AnalysisService:
         self.retriever = self.regulations_retriever
 
         # Structured LLMs for different outputs
-        self.hazards_llm = self.llm.with_structured_output(HazardList)
-        # Use SafetyViolationLLM (without source_documents) for LLM generation
+        # Use VLM for image-based hazard extraction
+        self.hazards_llm = self.vlm.with_structured_output(HazardList)
+        # Use text LLM for violation generation (RAG-based)
         self.violation_llm = self.llm.with_structured_output(SafetyViolationLLM)
 
     async def analyze_image(self, file: UploadFile) -> SafetyReport:
