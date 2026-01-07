@@ -167,33 +167,14 @@ class AnalysisService:
 
     async def _extract_hazards_as_list(self, image_b64: str) -> List[str]:
         """
-        Extract hazards from image as structured list using VLM with function calling
+        Extract hazards from image as structured list using VLM
 
-        Uses Aliyun's function calling API for structured output.
+        Uses with_structured_output for compatibility with both vLLM and Aliyun API:
+        - Aliyun mode: Uses native function_calling
+        - Local vLLM mode: Uses json_mode (no special vLLM flags required)
+        
         Returns list of hazard descriptions (e.g., ["未佩戴安全帽", "高空作业无安全带"])
         """
-        # Define function calling schema
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "report_hazards",
-                    "description": "报告识别到的安全隐患列表",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "hazards": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "安全隐患列表，每项是一个清晰的隐患描述",
-                            }
-                        },
-                        "required": ["hazards"],
-                    },
-                },
-            }
-        ]
-
         messages = [
             SystemMessage(
                 content="""你是专业的安全检查员，严格识别图片中真实存在的安全隐患。
@@ -207,10 +188,10 @@ class AnalysisService:
 4. 每条隐患用精确语言描述（10-30字，包含具体细节）
 5. 按严重程度排序
 6. 返回 0-5 个最关键的隐患
-7. 【关键】hazards数组中应包含所有识别到的隐患，不要只返回最严重的一个
+7. 【关键】识别所有可见的安全隐患，不要只返回最严重的一个
 
-如果图片中没有明确的安全隐患，返回空列表。
-请使用 report_hazards 函数报告识别到的全部隐患。
+如果图片中没有明确的安全隐患，返回空数组。
+请以JSON格式返回结果，结构为: {"hazards": ["隐患1", "隐患2", ...]}
 """
             ),
             HumanMessage(
@@ -228,23 +209,34 @@ class AnalysisService:
         ]
 
         try:
-            # Use bind_tools to attach function calling schema
-            vlm_with_tools = self.vlm.bind_tools(tools, tool_choice="auto")
-            result = await vlm_with_tools.ainvoke(messages)
-
+            # Use with_structured_output with json_mode for better compatibility
+            # This works with both vLLM and Aliyun API without requiring
+            # --enable-auto-tool-choice flag
+            settings = get_settings()
+            
+            # Check deployment mode to choose appropriate method
+            if settings.deployment_mode == "aliyun":
+                # Aliyun supports native function calling
+                vlm_structured = self.vlm.with_structured_output(
+                    HazardList, method="function_calling"
+                )
+            else:
+                # vLLM: use json_mode for better compatibility
+                vlm_structured = self.vlm.with_structured_output(
+                    HazardList, method="json_mode"
+                )
+            
+            result = await vlm_structured.ainvoke(messages)
             logger.debug(f"VLM response: {result}")
 
-            # Extract hazards from function call
-            if hasattr(result, "tool_calls") and result.tool_calls:
-                for tool_call in result.tool_calls:
-                    if tool_call.get("name") == "report_hazards":
-                        args = tool_call.get("args", {})
-                        hazards = args.get("hazards", [])
-                        logger.info(f"Extracted hazards: {hazards}")
-                        return hazards
-
-            # No function call - return empty
-            logger.warning("No tool_calls in response, returning empty list")
+            # Extract hazards from structured output
+            if isinstance(result, HazardList):
+                hazards = result.hazards
+                logger.info(f"Extracted {len(hazards)} hazards: {hazards}")
+                return hazards
+            
+            # Fallback
+            logger.warning("Unexpected response format, returning empty list")
             return []
 
         except Exception as e:

@@ -11,16 +11,16 @@ from app.core.config import get_settings
 def setup_logger():
     """
     Configure loguru logger with settings from config
-    
+
     - Removes default handler
     - Adds console handler with color formatting
     - Adds file handler with rotation and retention
     """
     settings = get_settings()
-    
+
     # Remove default handler
     logger.remove()
-    
+
     # Add console handler (stdout) with color formatting
     logger.add(
         sys.stdout,
@@ -28,11 +28,11 @@ def setup_logger():
         level=settings.log_level,
         colorize=True,
     )
-    
+
     # Ensure log directory exists
     log_file = Path(settings.log_file_path)
     log_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Add file handler with rotation and retention
     logger.add(
         settings.log_file_path,
@@ -43,10 +43,12 @@ def setup_logger():
         compression="zip",  # Compress rotated logs
         encoding="utf-8",
     )
-    
-    logger.info(f"Logger initialized - Level: {settings.log_level}, File: {settings.log_file_path}")
+
+    logger.info(
+        f"Logger initialized - Level: {settings.log_level}, File: {settings.log_file_path}"
+    )
     logger.info(f"Deployment mode: {settings.deployment_mode}")
-    
+
     return logger
 
 

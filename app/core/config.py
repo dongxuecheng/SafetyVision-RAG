@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     log_file_path: str = "logs/app.log"  # Log file path
     log_rotation: str = "100 MB"  # Rotate when file reaches 100MB
     log_retention: str = "30 days"  # Keep logs for 30 days
-    log_format: str = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+    log_format: str = (
+        "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+    )
 
     # Qdrant Settings
     qdrant_host: str = "qdrant-server"
@@ -67,7 +69,9 @@ class Settings(BaseSettings):
 
     # Local vLLM Settings (for local mode)
     vllm_llm_url: str = "http://vllm-qwen-vl:8000/v1"  # Local vLLM service URL
-    vllm_llm_model: str = "/model/Qwen3-VL-4B"  # Local model path (serves both VLM and LLM)
+    vllm_llm_model: str = (
+        "/model/qwen3-vl-4b"  # Local model path (serves both VLM and LLM)
+    )
 
     # Embedding Settings (Self-hosted)
     vllm_embed_url: str = "http://vllm-bge-m3:8000/v1"
@@ -164,9 +168,12 @@ class Settings(BaseSettings):
     def qdrant_url(self) -> str:
         return f"http://{self.qdrant_host}:{self.qdrant_port}"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+        "extra": "ignore",
+    }
 
 
 @lru_cache()

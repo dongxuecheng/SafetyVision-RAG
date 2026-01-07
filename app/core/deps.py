@@ -24,7 +24,7 @@ def get_qdrant_client() -> QdrantClient:
 def get_llm() -> ChatOpenAI:
     """
     Get LLM instance for RAG QA
-    
+
     Supports two deployment modes:
     - 'aliyun': Use Aliyun DashScope API (qwen3-max-preview)
     - 'local': Use local vLLM service (Qwen3-VL-4B)
@@ -64,7 +64,7 @@ def get_llm() -> ChatOpenAI:
 def get_vlm() -> ChatOpenAI:
     """
     Get VLM instance for image analysis
-    
+
     Supports two deployment modes:
     - 'aliyun': Use Aliyun DashScope Multimodal API (qwen3-vl-plus)
     - 'local': Use local vLLM service (Qwen3-VL-4B)
