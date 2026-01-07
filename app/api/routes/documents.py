@@ -23,7 +23,7 @@ async def upload_documents(
     purpose: str = Query(
         "safety",
         description="Document purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)",
-        regex="^(qa|safety)$",
+        pattern="^(qa|safety)$",
     ),
     skip_existing: bool = Query(True, description="Skip already uploaded files"),
     service: DocumentService = Depends(get_document_service),
@@ -48,7 +48,7 @@ async def list_documents(
     purpose: str = Query(
         "safety",
         description="Document purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)",
-        regex="^(qa|safety)$",
+        pattern="^(qa|safety)$",
     ),
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(
@@ -83,7 +83,7 @@ async def delete_documents(
     purpose: str = Query(
         "safety",
         description="Document purpose: 'qa' (RAG知识问答) or 'safety' (隐患识别)",
-        regex="^(qa|safety)$",
+        pattern="^(qa|safety)$",
     ),
     service: DocumentService = Depends(get_document_service),
 ):
