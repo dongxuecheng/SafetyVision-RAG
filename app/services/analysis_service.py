@@ -11,13 +11,15 @@ Implements RAG following LangChain v1.0+ best practices:
 
 import base64
 import asyncio
+import json
 from typing import List
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.documents import Document
 from fastapi import UploadFile, HTTPException, status
+from loguru import logger
 
-from app.core.deps import get_llm, get_vector_store
+from app.core.deps import get_llm, get_vlm, get_vector_store
 from app.core.config import get_settings
 from app.core.retrieval import SafetyRetriever
 from app.schemas.safety import (
@@ -41,7 +43,8 @@ class AnalysisService:
     """
 
     def __init__(self):
-        self.llm = get_llm()
+        self.llm = get_llm()  # For RAG QA generation
+        self.vlm = get_vlm()  # For image analysis (multimodal)
         self.settings = get_settings()
 
         # Load formatting constants from config
@@ -63,20 +66,26 @@ class AnalysisService:
         # Backward compatibility
         self.retriever = self.regulations_retriever
 
-        # Structured LLMs for different outputs
-        self.hazards_llm = self.llm.with_structured_output(HazardList)
-        # Use SafetyViolationLLM (without source_documents) for LLM generation
+        # Use text LLM for violation generation (RAG-based)
         self.violation_llm = self.llm.with_structured_output(SafetyViolationLLM)
 
-    async def analyze_image(self, file: UploadFile) -> SafetyReport:
+    async def analyze_image(
+        self, file: UploadFile, user_hazards: List[str] = None
+    ) -> SafetyReport:
         """
         Analyze image for safety hazards using per-hazard retrieval
 
         Flow:
         1. VLM extracts structured hazard list
-        2. Each hazard independently retrieves relevant regulations
-        3. Each hazard generates individual SafetyViolation with specific rule_reference
-        4. Combine all violations into final report
+        2. Merge with user-provided hazards (if any)
+        3. Each hazard independently retrieves relevant regulations
+        4. Each hazard generates individual SafetyViolation with specific rule_reference
+        5. Combine all violations into final report
+
+        Args:
+            file: Uploaded image file
+            user_hazards: Optional list of user-provided hazard descriptions.
+                         If None or empty, only VLM hazards are used.
         """
         # Validate file type
         if not file.content_type or not file.content_type.startswith("image/"):
@@ -95,23 +104,36 @@ class AnalysisService:
 
         # Step 1: Extract structured hazard list using VLM
         image_b64 = base64.b64encode(image_bytes).decode()
-        hazards_list = await self._extract_hazards_as_list(image_b64)
+        vlm_hazards = await self._extract_hazards_as_list(image_b64)
 
-        # If no hazards detected, return empty report (not an error)
+        # Step 2: Merge user-provided hazards with VLM-detected hazards
+        # Treat None and empty list as equivalent (no user hazards)
+        if user_hazards:  # Only merge if not None and not empty
+            hazards_list = user_hazards + vlm_hazards
+            logger.info(f"用户提供的隐患 ({len(user_hazards)}): {user_hazards}")
+            logger.info(f"VLM识别的隐患 ({len(vlm_hazards)}): {vlm_hazards}")
+            logger.info(f"合并后的隐患列表 ({len(hazards_list)}): {hazards_list}")
+        else:
+            # No user hazards - use only VLM results (backward compatible)
+            hazards_list = vlm_hazards
+            logger.info(f"VLM识别结果: hazards={vlm_hazards}")
+            logger.info(f"识别到的隐患数量: {len(hazards_list)}")
+
+        # If no hazards detected (neither user nor VLM), return empty report
         if not hazards_list:
             return SafetyReport(violations=[])
 
-        # Step 2: Batch retrieve documents for each hazard (parallel)
+        # Step 3: Batch retrieve documents for each hazard (parallel)
         docs_per_hazard = await self._batch_retrieve_per_hazard(hazards_list)
 
-        # Step 3: Generate violations for each hazard (parallel)
+        # Step 4: Generate violations for each hazard (parallel)
         violation_tasks = [
             self._generate_single_violation(hazard, docs, i + 1)
             for i, (hazard, docs) in enumerate(zip(hazards_list, docs_per_hazard))
         ]
         violations = await asyncio.gather(*violation_tasks)
 
-        # Step 4: Filter out violations without relevant regulations
+        # Step 5: Filter out violations without relevant regulations
         # Only keep hazards that have successfully retrieved relevant knowledge
         filtered_violations = [
             v
@@ -128,14 +150,14 @@ class AnalysisService:
             )
         ]
 
-        # Step 5: Reassign continuous hazard_id after filtering
+        # Step 6: Reassign continuous hazard_id after filtering
         # Ensure hazard_id is always sequential (1, 2, 3, ...) in final report
         reindexed_violations = [
             v.model_copy(update={"hazard_id": idx + 1})
             for idx, v in enumerate(filtered_violations)
         ]
 
-        # Step 6: Assemble final report
+        # Step 7: Assemble final report
         # If no valid violations found, return empty report
         report = SafetyReport(
             violations=reindexed_violations,
@@ -147,11 +169,18 @@ class AnalysisService:
         """
         Extract hazards from image as structured list using VLM
 
+        Uses with_structured_output for compatibility with both vLLM and Aliyun API:
+        - Aliyun mode: Uses native function_calling
+        - Local vLLM mode: Uses json_mode (no special vLLM flags required)
+
         Returns list of hazard descriptions (e.g., ["未佩戴安全帽", "高空作业无安全带"])
         """
         messages = [
             SystemMessage(
                 content="""你是专业的安全检查员，严格识别图片中真实存在的安全隐患。
+
+【重要】如果图片中存在多个隐患，必须全部列出，不要遗漏！
+
 要求：
 1. 必须有清晰明确的视觉证据
 2. 禁止猜测或推测可能存在的隐患
@@ -159,8 +188,10 @@ class AnalysisService:
 4. 每条隐患用精确语言描述（10-30字，包含具体细节）
 5. 按严重程度排序
 6. 返回 0-5 个最关键的隐患
+7. 【关键】识别所有可见的安全隐患，不要只返回最严重的一个
 
-如果图片中没有明确的安全隐患，返回空列表（hazards: []）。
+如果图片中没有明确的安全隐患，返回空数组。
+请以JSON格式返回结果，结构为: {"hazards": ["隐患1", "隐患2", ...]}
 """
             ),
             HumanMessage(
@@ -178,10 +209,38 @@ class AnalysisService:
         ]
 
         try:
-            result = await self.hazards_llm.ainvoke(messages)
-            print(result)
-            return result.hazards
+            # Use with_structured_output with json_mode for better compatibility
+            # This works with both vLLM and Aliyun API without requiring
+            # --enable-auto-tool-choice flag
+            settings = get_settings()
+
+            # Check deployment mode to choose appropriate method
+            if settings.deployment_mode == "aliyun":
+                # Aliyun supports native function calling
+                vlm_structured = self.vlm.with_structured_output(
+                    HazardList, method="function_calling"
+                )
+            else:
+                # vLLM: use json_mode for better compatibility
+                vlm_structured = self.vlm.with_structured_output(
+                    HazardList, method="json_mode"
+                )
+
+            result = await vlm_structured.ainvoke(messages)
+            logger.debug(f"VLM response: {result}")
+
+            # Extract hazards from structured output
+            if isinstance(result, HazardList):
+                hazards = result.hazards
+                logger.info(f"Extracted {len(hazards)} hazards: {hazards}")
+                return hazards
+
+            # Fallback
+            logger.warning("Unexpected response format, returning empty list")
+            return []
+
         except Exception as e:
+            logger.error(f"Error in _extract_hazards_as_list: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"VLM 隐患提取失败: {str(e)}",
