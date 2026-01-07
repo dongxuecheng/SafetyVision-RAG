@@ -68,15 +68,21 @@ class AnalysisService:
         # Use text LLM for violation generation (RAG-based)
         self.violation_llm = self.llm.with_structured_output(SafetyViolationLLM)
 
-    async def analyze_image(self, file: UploadFile) -> SafetyReport:
+    async def analyze_image(self, file: UploadFile, user_hazards: List[str] = None) -> SafetyReport:
         """
         Analyze image for safety hazards using per-hazard retrieval
 
         Flow:
         1. VLM extracts structured hazard list
-        2. Each hazard independently retrieves relevant regulations
-        3. Each hazard generates individual SafetyViolation with specific rule_reference
-        4. Combine all violations into final report
+        2. Merge with user-provided hazards (if any)
+        3. Each hazard independently retrieves relevant regulations
+        4. Each hazard generates individual SafetyViolation with specific rule_reference
+        5. Combine all violations into final report
+        
+        Args:
+            file: Uploaded image file
+            user_hazards: Optional list of user-provided hazard descriptions.
+                         If None or empty, only VLM hazards are used.
         """
         # Validate file type
         if not file.content_type or not file.content_type.startswith("image/"):
@@ -95,23 +101,36 @@ class AnalysisService:
 
         # Step 1: Extract structured hazard list using VLM
         image_b64 = base64.b64encode(image_bytes).decode()
-        hazards_list = await self._extract_hazards_as_list(image_b64)
+        vlm_hazards = await self._extract_hazards_as_list(image_b64)
+        
+        # Step 2: Merge user-provided hazards with VLM-detected hazards
+        # Treat None and empty list as equivalent (no user hazards)
+        if user_hazards:  # Only merge if not None and not empty
+            hazards_list = user_hazards + vlm_hazards
+            print(f"用户提供的隐患 ({len(user_hazards)}): {user_hazards}")
+            print(f"VLM识别的隐患 ({len(vlm_hazards)}): {vlm_hazards}")
+            print(f"合并后的隐患列表 ({len(hazards_list)}): {hazards_list}")
+        else:
+            # No user hazards - use only VLM results (backward compatible)
+            hazards_list = vlm_hazards
+            print(f"VLM识别结果: hazards={vlm_hazards}")
+            print(f"识别到的隐患数量: {len(hazards_list)}")
 
-        # If no hazards detected, return empty report (not an error)
+        # If no hazards detected (neither user nor VLM), return empty report
         if not hazards_list:
             return SafetyReport(violations=[])
 
-        # Step 2: Batch retrieve documents for each hazard (parallel)
+        # Step 3: Batch retrieve documents for each hazard (parallel)
         docs_per_hazard = await self._batch_retrieve_per_hazard(hazards_list)
 
-        # Step 3: Generate violations for each hazard (parallel)
+        # Step 4: Generate violations for each hazard (parallel)
         violation_tasks = [
             self._generate_single_violation(hazard, docs, i + 1)
             for i, (hazard, docs) in enumerate(zip(hazards_list, docs_per_hazard))
         ]
         violations = await asyncio.gather(*violation_tasks)
 
-        # Step 4: Filter out violations without relevant regulations
+        # Step 5: Filter out violations without relevant regulations
         # Only keep hazards that have successfully retrieved relevant knowledge
         filtered_violations = [
             v
@@ -128,14 +147,14 @@ class AnalysisService:
             )
         ]
 
-        # Step 5: Reassign continuous hazard_id after filtering
+        # Step 6: Reassign continuous hazard_id after filtering
         # Ensure hazard_id is always sequential (1, 2, 3, ...) in final report
         reindexed_violations = [
             v.model_copy(update={"hazard_id": idx + 1})
             for idx, v in enumerate(filtered_violations)
         ]
 
-        # Step 6: Assemble final report
+        # Step 7: Assemble final report
         # If no valid violations found, return empty report
         report = SafetyReport(
             violations=reindexed_violations,

@@ -28,7 +28,7 @@ services:
       - --model
       - /model/bge-m3
       - --gpu-memory-utilization
-      - "0.3"
+      - "0.4"
     networks:
       - ai-network
     restart: unless-stopped
@@ -73,7 +73,7 @@ services:
       - --model
       - /model/bge-reranker-v2-m3
       - --gpu-memory-utilization
-      - "0.3"
+      - "0.4"
     networks:
       - ai-network
     restart: unless-stopped
