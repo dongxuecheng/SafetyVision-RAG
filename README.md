@@ -22,18 +22,18 @@
 ```
 ┌──────────────────────────────────────────────────────────┐
 │           Chainlit UI (8000) - 用户交互层                 │
-│   - 流式对话 + LaTeX 公式 + 中文化                        │
-│   - 对话历史 (10轮) + Starter 推荐问题                   │
+│   - 流式对话 + LaTeX 公式 + 中文化                         │
+│   - 对话历史 (10轮) + Starter 推荐问题                     │
 └───────────────────────────┬──────────────────────────────┘
                             ↓ (调用内部 API)
 ┌──────────────────────────────────────────────────────────┐
 │        SafetyVision-RAG API (8080) - 业务逻辑层           │
 │   FastAPI + LangChain + Async/Await                      │
-│                                                           │
+│                                                          │
 │  ┌──────────────┐  ┌───────────────────────────────────┐ │
 │  │ VLM Pipeline │  │   RAG Pipeline (混合检索)          │ │
 │  │ - 图像识别    │  │   ├─ 向量搜索 (BGE-m3)             │ │
-│  │ - 隐患提取    │  │   ├─ 关键词匹配 (文档名+条款号)    │ │
+│  │ - 隐患提取    │  │   ├─ 关键词匹配 (文档名+条款号)     │ │
 │  │ - 结构化输出  │  │   ├─ 重排序 (Reranker-v2-M3)       │ │
 │  └──────────────┘  │   └─ 精确匹配优先 (doc_article)    │ │
 │                    └───────────────────────────────────┘ │
@@ -47,70 +47,6 @@
        └───────────────────────┘  └───────────────────────┘
 ```
 
-### 代码架构（Clean Architecture）
-```
-SafetyVision-RAG/
-├── chainlit_app.py                     # Chainlit UI 入口
-│   ├─ QA 对话流程                       #   - 流式回答 + LaTeX
-│   ├─ Starter 推荐问题                  #   - 引导用户提问
-│   └─ 历史消息管理 (10轮)               #   - 上下文连续对话
-│
-├── app/                                # FastAPI 后端应用
-│   ├── main.py                         # API 入口 + 生命周期
-│   │
-│   ├── api/routes/                     # API 路由层
-│   │   ├── qa.py                       # 问答端点（核心）
-│   │   ├── analysis.py                 # 图像分析端点
-│   │   └── documents.py                # 文档管理端点
-│   │
-│   ├── core/                           # 基础设施层
-│   │   ├── config.py                   # 配置管理（45+ 参数）
-│   │   ├── deps.py                     # 依赖注入
-│   │   └── retrieval.py                # 混合检索策略
-│   │       ├─ 向量搜索 + 关键词匹配     #   - BGE-m3 嵌入
-│   │       ├─ 文档名+条款号过滤         #   - 精确定位
-│   │       ├─ 重排序 (Reranker-v2-M3)  #   - 提升准确性
-│   │       └─ 精确匹配优先              #   - doc_article 类型
-│   │
-│   ├── schemas/                        # 数据模型（DTO）
-│   │   ├── qa.py                       # QA 请求/响应
-│   │   └── safety.py                   # 图像分析模型
-│   │
-│   └── services/                       # 业务逻辑层
-│       ├── qa_service.py               # 问答服务（核心）
-│       │   ├─ ask_question()           #   主流程编排
-│       │   ├─ _build_prompt()          #   Prompt 构建
-│       │   └─ _format_sources()        #   源文档格式化
-│       │
-│       ├── analysis_service.py         # 安全分析服务
-│       └── document_service.py         # 文档处理服务
-│
-├── .chainlit/                          # Chainlit 配置
-│   ├── config.toml                     # UI 配置（中文化）
-│   └── translations/zh-CN.json         # 界面翻译（自动生成）
-│
-├── chainlit.md                         # 默认欢迎页面
-├── chainlit_zh-CN.md                   # 中文欢迎页面
-│
-└── data/qdrant/                        # 向量数据库存储
-    └── rag-qa-knowledge/               # QA 知识库集合
-```
-
-### 架构设计原则
-
-**Clean Architecture 实践：**
-- 🎯 **关注点分离**：API → Service → Retrieval → Data
-- 🔌 **依赖注入**：使用 FastAPI `Depends()` 实现 IoC
-- ⚙️ **配置管理**：Pydantic Settings 环境变量自动加载
-- 📦 **类型安全**：完整的 Type Hints + Pydantic 验证
-- 🧪 **可测试性**：服务层独立，易于 Mock 和单元测试
-
-**LangChain v1.0+ 最佳实践：**
-- ✅ `with_structured_output()`：类型安全的结构化输出
-- ✅ `@chain` 装饰器：声明式 Pipeline 组合
-- ✅ Async-first：全异步设计，支持并发
-- ✅ Modular Retrieval：可组合的检索策略
-- ✅ Document Metadata：完整的溯源信息
 
 ## 🚀 快速开始
 

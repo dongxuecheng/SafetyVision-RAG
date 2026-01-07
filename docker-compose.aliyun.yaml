@@ -21,12 +21,12 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
-      - /home/xcd/vllm/model:/model:ro
+      - ${MODEL_BASE_PATH}:/model:ro
     ports:
       - "28001:8000"
     command:
       - --model
-      - /model/bge-m3
+      - ${VLLM_EMBED_MODEL}
       - --gpu-memory-utilization
       - "0.4"
     networks:
@@ -66,12 +66,12 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
-      - /home/xcd/vllm/model:/model:ro
+      - ${MODEL_BASE_PATH}:/model:ro
     ports:
       - "28002:8000"
     command:
       - --model
-      - /model/bge-reranker-v2-m3
+      - ${VLLM_RERANK_MODEL}
       - --gpu-memory-utilization
       - "0.4"
     networks:
@@ -99,7 +99,7 @@ services:
       - ./logs:/app/logs:rw  # 日志目录
     environment:
       # Deployment Mode
-      DEPLOYMENT_MODE: aliyun
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE}
       
       # Aliyun DashScope API
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
@@ -110,15 +110,15 @@ services:
       LLM_MODEL_NAME: ${LLM_MODEL_NAME:-qwen3-max-preview}
       
       # Self-hosted Services
-      QDRANT_HOST: qdrant-server
-      QDRANT_PORT: 6333
-      VLLM_EMBED_URL: http://vllm-bge-m3:8000/v1
-      VLLM_EMBED_MODEL: /model/bge-m3
-      VLLM_RERANK_URL: http://vllm-bge-reranker:8000
-      VLLM_RERANK_MODEL: /model/bge-reranker-v2-m3
+      QDRANT_HOST: ${QDRANT_HOST}
+      QDRANT_PORT: ${QDRANT_PORT}
+      VLLM_EMBED_URL: ${VLLM_EMBED_URL}
+      VLLM_EMBED_MODEL: ${VLLM_EMBED_MODEL}
+      VLLM_RERANK_URL: ${VLLM_RERANK_URL}
+      VLLM_RERANK_MODEL: ${VLLM_RERANK_MODEL}
       
       # Logging
-      LOG_LEVEL: INFO
+      LOG_LEVEL: ${LOG_LEVEL}
     networks:
       - ai-network
     depends_on:
@@ -149,7 +149,7 @@ services:
       - ./logs:/app/logs:rw  # 日志目录
     environment:
       # Deployment Mode
-      DEPLOYMENT_MODE: aliyun
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE}
       
       # Aliyun DashScope API
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
@@ -160,18 +160,15 @@ services:
       LLM_MODEL_NAME: ${LLM_MODEL_NAME:-qwen3-max-preview}
       
       # Self-hosted Services
-      QDRANT_HOST: qdrant-server
-      QDRANT_PORT: 6333
-      VLLM_EMBED_URL: http://vllm-bge-m3:8000/v1
-      VLLM_EMBED_MODEL: /model/bge-m3
-      VLLM_RERANK_URL: http://vllm-bge-reranker:8000
-      VLLM_RERANK_MODEL: /model/bge-reranker-v2-m3
-      
-      CHAINLIT_HOST: 0.0.0.0
-      CHAINLIT_PORT: 8000
+      QDRANT_HOST: ${QDRANT_HOST}
+      QDRANT_PORT: ${QDRANT_PORT}
+      VLLM_EMBED_URL: ${VLLM_EMBED_URL}
+      VLLM_EMBED_MODEL: ${VLLM_EMBED_MODEL}
+      VLLM_RERANK_URL: ${VLLM_RERANK_URL}
+      VLLM_RERANK_MODEL: ${VLLM_RERANK_MODEL}
       
       # Logging
-      LOG_LEVEL: INFO
+      LOG_LEVEL: ${LOG_LEVEL}
     command: ["chainlit", "run", "chainlit_app.py", "--host", "0.0.0.0", "--port", "8000"]
     networks:
       - ai-network

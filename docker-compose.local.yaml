@@ -21,12 +21,12 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
-      - /home/xcd/vllm/model:/model:ro
+      - ${MODEL_BASE_PATH}:/model:ro
     ports:
       - "28000:8000"
     command:
       - --model
-      - /model/qwen3-vl-4b
+      - ${VLLM_LLM_MODEL}
       - --gpu-memory-utilization
       - "0.7"
       - --max-model-len
@@ -55,12 +55,12 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
-      - /home/xcd/vllm/model:/model:ro
+      - ${MODEL_BASE_PATH}:/model:ro
     ports:
       - "28001:8000"
     command:
       - --model
-      - /model/bge-m3
+      - ${VLLM_EMBED_MODEL}
       - --gpu-memory-utilization
       - "0.2"
     networks:
@@ -87,12 +87,12 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
-      - /home/xcd/vllm/model:/model:ro
+      - ${MODEL_BASE_PATH}:/model:ro
     ports:
       - "28002:8000"
     command:
       - --model
-      - /model/bge-reranker-v2-m3
+      - ${VLLM_RERANK_MODEL}
       - --gpu-memory-utilization
       - "0.15"
     networks:
@@ -181,26 +181,22 @@ services:
       - ./logs:/app/logs:rw  # 日志目录
     environment:
       # Deployment mode
-      DEPLOYMENT_MODE: local
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE}
       
       # Qdrant
-      QDRANT_HOST: qdrant-server
-      QDRANT_PORT: 6333
+      QDRANT_HOST: ${QDRANT_HOST}
+      QDRANT_PORT: ${QDRANT_PORT}
       
       # Local vLLM Services
-      VLLM_LLM_URL: http://vllm-qwen-vl:8000/v1
-      VLLM_LLM_MODEL: /model/Qwen3-VL-4B
-      VLLM_EMBED_URL: http://vllm-bge-m3:8000/v1
-      VLLM_EMBED_MODEL: /model/bge-m3
-      VLLM_RERANK_URL: http://vllm-bge-reranker:8000
-      VLLM_RERANK_MODEL: /model/bge-reranker-v2-m3
-      
-      # Chainlit
-      CHAINLIT_HOST: 0.0.0.0
-      CHAINLIT_PORT: 8000
+      VLLM_LLM_URL: ${VLLM_LLM_URL}
+      VLLM_LLM_MODEL: ${VLLM_LLM_MODEL}
+      VLLM_EMBED_URL: ${VLLM_EMBED_URL}
+      VLLM_EMBED_MODEL: ${VLLM_EMBED_MODEL}
+      VLLM_RERANK_URL: ${VLLM_RERANK_URL}
+      VLLM_RERANK_MODEL: ${VLLM_RERANK_MODEL}
       
       # Logging
-      LOG_LEVEL: INFO
+      LOG_LEVEL: ${LOG_LEVEL}
     command: ["chainlit", "run", "chainlit_app.py", "--host", "0.0.0.0", "--port", "8000"]
     networks:
       - ai-network
