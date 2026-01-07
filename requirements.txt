@@ -9,12 +9,12 @@ langchain-text-splitters
 qdrant-client
 pydantic
 python-multipart
-PyMuPDF>=1.23.0
-pymupdf4llm>=0.0.5
+PyMuPDF
+pymupdf4llm
 openpyxl
 python-docx
 xlrd
-cohere>=5.0.0
+cohere
 beautifulsoup4
 lxml
-chainlit>=1.0.0
+chainlit

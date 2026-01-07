@@ -15,7 +15,9 @@ router = APIRouter(prefix="/analysis", tags=["analysis"])
 @router.post("/image", response_model=SafetyReport)
 async def analyze_image(
     file: Annotated[UploadFile, File(description="Image file to analyze")],
-    user_hazards: Annotated[Optional[str], Form(description="User-provided hazard description")] = None,
+    user_hazards: Annotated[
+        Optional[str], Form(description="User-provided hazard description")
+    ] = None,
     service: AnalysisService = Depends(get_analysis_service),
 ):
     """
@@ -33,5 +35,5 @@ async def analyze_image(
     user_hazards_list = None
     if user_hazards and user_hazards.strip():
         user_hazards_list = [user_hazards.strip()]
-    
+
     return await service.analyze_image(file, user_hazards=user_hazards_list)

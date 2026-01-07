@@ -68,7 +68,9 @@ class AnalysisService:
         # Use text LLM for violation generation (RAG-based)
         self.violation_llm = self.llm.with_structured_output(SafetyViolationLLM)
 
-    async def analyze_image(self, file: UploadFile, user_hazards: List[str] = None) -> SafetyReport:
+    async def analyze_image(
+        self, file: UploadFile, user_hazards: List[str] = None
+    ) -> SafetyReport:
         """
         Analyze image for safety hazards using per-hazard retrieval
 
@@ -78,7 +80,7 @@ class AnalysisService:
         3. Each hazard independently retrieves relevant regulations
         4. Each hazard generates individual SafetyViolation with specific rule_reference
         5. Combine all violations into final report
-        
+
         Args:
             file: Uploaded image file
             user_hazards: Optional list of user-provided hazard descriptions.
@@ -102,7 +104,7 @@ class AnalysisService:
         # Step 1: Extract structured hazard list using VLM
         image_b64 = base64.b64encode(image_bytes).decode()
         vlm_hazards = await self._extract_hazards_as_list(image_b64)
-        
+
         # Step 2: Merge user-provided hazards with VLM-detected hazards
         # Treat None and empty list as equivalent (no user hazards)
         if user_hazards:  # Only merge if not None and not empty
