@@ -114,9 +114,6 @@ SafetyVision-RAG/
 
 ## 🚀 快速开始
 
-### 部署模式选择
-
-支持两种部署模式，详细说明参考 [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
 
 #### 🌩️ 阿里云API模式（推荐）
 
@@ -218,8 +215,7 @@ curl -X POST "http://localhost:8080/api/analysis/image" \
 # 传入用户自定义隐患（可选）
 curl -X POST "http://localhost:8080/api/analysis/image" \
   -F "file=@image.jpg" \
-  -F "user_hazards=未佩戴安全帽" \
-  -F "user_hazards=高处作业无安全带"
+  -F "user_hazards=未佩戴安全帽" 
 ```
 
 ### 文档管理示例

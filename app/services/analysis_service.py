@@ -172,7 +172,7 @@ class AnalysisService:
         Uses with_structured_output for compatibility with both vLLM and Aliyun API:
         - Aliyun mode: Uses native function_calling
         - Local vLLM mode: Uses json_mode (no special vLLM flags required)
-        
+
         Returns list of hazard descriptions (e.g., ["未佩戴安全帽", "高空作业无安全带"])
         """
         messages = [
@@ -213,7 +213,7 @@ class AnalysisService:
             # This works with both vLLM and Aliyun API without requiring
             # --enable-auto-tool-choice flag
             settings = get_settings()
-            
+
             # Check deployment mode to choose appropriate method
             if settings.deployment_mode == "aliyun":
                 # Aliyun supports native function calling
@@ -225,7 +225,7 @@ class AnalysisService:
                 vlm_structured = self.vlm.with_structured_output(
                     HazardList, method="json_mode"
                 )
-            
+
             result = await vlm_structured.ainvoke(messages)
             logger.debug(f"VLM response: {result}")
 
@@ -234,7 +234,7 @@ class AnalysisService:
                 hazards = result.hazards
                 logger.info(f"Extracted {len(hazards)} hazards: {hazards}")
                 return hazards
-            
+
             # Fallback
             logger.warning("Unexpected response format, returning empty list")
             return []
