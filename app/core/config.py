@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     app_version: str = "2.0.0"
     debug: bool = False
 
+    # Logging Settings
+    log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    log_file_path: str = "logs/app.log"  # Log file path
+    log_rotation: str = "100 MB"  # Rotate when file reaches 100MB
+    log_retention: str = "30 days"  # Keep logs for 30 days
+    log_format: str = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+
     # Qdrant Settings
     qdrant_host: str = "qdrant-server"
     qdrant_port: int = 6333
@@ -45,15 +52,22 @@ class Settings(BaseSettings):
         "隐患整改要求",
     ]  # Only index these key fields from Excel
 
-    # Aliyun DashScope API Settings
+    # Deployment Mode: 'local' or 'aliyun'
+    deployment_mode: str = "aliyun"  # Set via environment variable DEPLOYMENT_MODE
+
+    # Aliyun DashScope API Settings (for aliyun mode)
     dashscope_api_key: str = ""  # Set via environment variable DASHSCOPE_API_KEY
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
     # VLM Model for Image Analysis (Multimodal)
-    vlm_model_name: str = "qwen3-vl-plus"  # Aliyun multimodal model
+    vlm_model_name: str = "qwen3-vl-plus"  # Aliyun multimodal model (aliyun mode)
 
     # LLM Model for RAG QA (Text-only)
-    llm_model_name: str = "qwen3-max-preview"  # Aliyun text model
+    llm_model_name: str = "qwen3-max-preview"  # Aliyun text model (aliyun mode)
+
+    # Local vLLM Settings (for local mode)
+    vllm_llm_url: str = "http://vllm-qwen-vl:8000/v1"  # Local vLLM service URL
+    vllm_llm_model: str = "/model/Qwen3-VL-4B"  # Local model path (serves both VLM and LLM)
 
     # Embedding Settings (Self-hosted)
     vllm_embed_url: str = "http://vllm-bge-m3:8000/v1"

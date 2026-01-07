@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from app.core.config import get_settings
 from app.core.deps import ensure_collection, get_qdrant_client
+from app.core.logger import logger  # Initialize logger
 from app.api.routes import documents, analysis
 from app.api import qa
 

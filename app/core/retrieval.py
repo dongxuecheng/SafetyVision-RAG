@@ -5,12 +5,10 @@ Implements various retrieval techniques following LangChain best practices
 """
 
 import re
-import logging
 from typing import List, Optional, Set
 from langchain_core.documents import Document
 import cohere
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class SafetyRetriever:
@@ -414,7 +412,7 @@ class SafetyRetriever:
 
             return matched_docs[:k]
         except Exception as e:
-            print(f"Text match failed: {e}")
+            logger.warning(f"Text match failed: {e}")
             return []
 
     async def retrieve_with_score(
@@ -508,7 +506,7 @@ class SafetyRetriever:
 
         except Exception as e:
             # Fallback: if rerank fails, return similarity results
-            print(f"Rerank failed: {e}, falling back to similarity")
+            logger.warning(f"Rerank failed: {e}, falling back to similarity")
             return candidates[:k]
 
     async def retrieve_with_fallback(
@@ -562,7 +560,7 @@ class SafetyRetriever:
                         seen_contents.add(content_hash)
                         all_candidates.append(doc)
             except Exception as e:
-                print(f"Keyword search failed: {e}")
+                logger.warning(f"Keyword search failed: {e}")
 
         # 2b: Vector similarity search (supplements keyword matching)
         try:
@@ -574,7 +572,7 @@ class SafetyRetriever:
                     seen_contents.add(content_hash)
                     all_candidates.append(doc)
         except Exception as e:
-            print(f"Vector search failed: {e}")
+            logger.warning(f"Vector search failed: {e}")
 
         if not all_candidates:
             return []
@@ -613,7 +611,7 @@ class SafetyRetriever:
                 return final_docs[:k]
 
             except Exception as e:
-                print(f"Rerank failed: {e}, using combined candidates")
+                logger.warning(f"Rerank failed: {e}, using combined candidates")
 
         # Fallback: return top candidates by original score
         return sorted(

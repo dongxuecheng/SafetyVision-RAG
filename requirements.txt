@@ -18,3 +18,4 @@ cohere
 beautifulsoup4
 lxml
 chainlit
+loguru

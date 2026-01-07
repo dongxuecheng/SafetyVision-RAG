@@ -17,6 +17,7 @@ from typing import List
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.documents import Document
 from fastapi import UploadFile, HTTPException, status
+from loguru import logger
 
 from app.core.deps import get_llm, get_vlm, get_vector_store
 from app.core.config import get_settings
@@ -109,14 +110,14 @@ class AnalysisService:
         # Treat None and empty list as equivalent (no user hazards)
         if user_hazards:  # Only merge if not None and not empty
             hazards_list = user_hazards + vlm_hazards
-            print(f"用户提供的隐患 ({len(user_hazards)}): {user_hazards}")
-            print(f"VLM识别的隐患 ({len(vlm_hazards)}): {vlm_hazards}")
-            print(f"合并后的隐患列表 ({len(hazards_list)}): {hazards_list}")
+            logger.info(f"用户提供的隐患 ({len(user_hazards)}): {user_hazards}")
+            logger.info(f"VLM识别的隐患 ({len(vlm_hazards)}): {vlm_hazards}")
+            logger.info(f"合并后的隐患列表 ({len(hazards_list)}): {hazards_list}")
         else:
             # No user hazards - use only VLM results (backward compatible)
             hazards_list = vlm_hazards
-            print(f"VLM识别结果: hazards={vlm_hazards}")
-            print(f"识别到的隐患数量: {len(hazards_list)}")
+            logger.info(f"VLM识别结果: hazards={vlm_hazards}")
+            logger.info(f"识别到的隐患数量: {len(hazards_list)}")
 
         # If no hazards detected (neither user nor VLM), return empty report
         if not hazards_list:
@@ -231,7 +232,7 @@ class AnalysisService:
             vlm_with_tools = self.vlm.bind_tools(tools, tool_choice="auto")
             result = await vlm_with_tools.ainvoke(messages)
 
-            print(f"VLM response: {result}")
+            logger.debug(f"VLM response: {result}")
 
             # Extract hazards from function call
             if hasattr(result, "tool_calls") and result.tool_calls:
@@ -239,15 +240,15 @@ class AnalysisService:
                     if tool_call.get("name") == "report_hazards":
                         args = tool_call.get("args", {})
                         hazards = args.get("hazards", [])
-                        print(f"Extracted hazards: {hazards}")
+                        logger.info(f"Extracted hazards: {hazards}")
                         return hazards
 
             # No function call - return empty
-            print("No tool_calls in response, returning empty list")
+            logger.warning("No tool_calls in response, returning empty list")
             return []
 
         except Exception as e:
-            print(f"Error in _extract_hazards_as_list: {str(e)}")
+            logger.error(f"Error in _extract_hazards_as_list: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"VLM 隐患提取失败: {str(e)}",
