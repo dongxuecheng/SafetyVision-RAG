@@ -1,29 +1,20 @@
 # SafetyVision-RAG
 
-AI-Powered Safety Hazard Detection System using Vision-Language Models and Retrieval-Augmented Generation.
-
 **基于视觉-语言模型和检索增强生成的AI安全隐患检测系统**
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-2.0.0-009688.svg)](https://fastapi.tiangolo.com)
 [![LangChain](https://img.shields.io/badge/LangChain-1.0+-1C3C3C.svg)](https://python.langchain.com)
 [![Qdrant](https://img.shields.io/badge/Qdrant-1.15+-DC382D.svg)](https://qdrant.tech)
 [![vLLM](https://img.shields.io/badge/vLLM-latest-4B8BBE.svg)](https://github.com/vllm-project/vllm)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## ✨ 功能特性
+## ✨ 核心特性
 
-### 核心功能
-- 💬 **智能问答 (Chainlit UI)**：流式对话，支持 LaTeX 公式，完整中文化
-- 🎯 **智能图像分析**：使用 Qwen-VL-4B 多模态大模型识别安全隐患
-- 📋 **结构化输出**：自动提取隐患描述、整改建议、规范引用
-- 📚 **源文档溯源**：每条记录附带引用文档的文件名和精确位置
-
-### RAG 增强
-- ✅ **混合检索**：向量搜索 + 关键词匹配 + 文档名过滤
-- ✅ **精确定位**：支持"《文档名》第X条"查询（自动转换阿拉伯/中文数字）
-- ✅ **多格式文档**：PDF、DOCX、XLSX、Markdown
-- ✅ **智能重排**：BGE-Reranker-v2-M3，相似度 0.2 + Rerank 0.3
-- ✅ **对话记忆**：保留最近 10 条历史消息
+- 💬 **智能问答**：流式对话 + LaTeX 公式 + 中文化（Chainlit UI）
+- 🎯 **图像分析**：多模态VLM识别安全隐患，支持用户自定义隐患融合
+- 🔄 **双模式部署**：阿里云API（生产）/ 本地vLLM（离线）灵活切换
+- 📝 **统一日志**：loguru集中管理，文件输出 + 日志轮转
+- 📚 **混合检索**：向量搜索 + 关键词匹配 + BGE-Reranker重排
+- 📋 **结构化输出**：自动提取隐患、建议、规范引用及源文档溯源
 
 ## 📐 系统架构
 
@@ -123,40 +114,57 @@ SafetyVision-RAG/
 
 ## 🚀 快速开始
 
-### 前置要求
+### 部署模式选择
 
-- Docker & Docker Compose
-- NVIDIA GPU（支持 CUDA）
-- 至少 16GB GPU 显存（推荐 24GB+）
+支持两种部署模式，详细说明参考 [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
 
-### 1. 启动所有服务
+#### 🌩️ 阿里云API模式（推荐）
+
+**优势**：GPU要求低（~8GB），使用高性能云端模型
 
 ```bash
-# 启动 5 个容器（API + 3个模型 + Qdrant）
-docker compose up -d
+# 1. 配置
+cp .env.aliyun.example .env
+vim .env  # 填写 DASHSCOPE_API_KEY
 
-# 等待所有服务健康检查通过（约 2-3 分钟）
-docker compose ps
+# 2. 启动
+docker compose -f docker-compose.aliyun.yaml up -d
+
+# 3. 访问
+# Chainlit UI: http://localhost:8000
+# API文档: http://localhost:8080/docs
 ```
 
-### 2. 验证服务状态
+**配置**：VLM/LLM使用阿里云API，Embedding/Reranker本地部署
+
+#### 💻 本地vLLM模式
+
+**优势**：完全离线，数据不出本地
 
 ```bash
-# 查看服务日志
+# 1. 配置
+cp .env.local.example .env
+
+# 2. 启动（需要16GB+ GPU显存）
+docker compose -f docker-compose.local.yaml up -d
+
+# 3. 等待模型加载（3-5分钟）
+docker compose logs -f vllm-qwen-vl
+```
+
+**配置**：所有模型本地部署（Qwen3-VL-4B + BGE-M3 + BGE-Reranker）
+
+### 验证服务
+
+```bash
+# 查看日志
 docker compose logs -f safetyvision-api
 
-# 检查健康状态
-curl http://localhost:8000           # Chainlit UI（推荐）
-curl http://localhost:8080/docs      # API 文档（Swagger UI）
+# 访问服务
+curl http://localhost:8000           # Chainlit UI
+curl http://localhost:8080/docs      # API 文档
 curl http://localhost:6333/dashboard # Qdrant 管理界面
 ```
-
-**服务端口**：
-- **Chainlit UI**: `http://localhost:8000` - 用户对话界面
-- SafetyVision API: `http://localhost:8080` - 后端 API
-- Qdrant: `http://localhost:6333` - 向量数据库
-
-### 3. 使用 Chainlit UI（推荐）
 
 打开浏览器访问 `http://localhost:8000`，开始对话：
 - 点击推荐问题快速开始
@@ -175,114 +183,60 @@ curl -X POST "http://localhost:8080/api/qa/documents" \
   -F "files=@建筑施工规范.docx"
 ```
 
-### 5. 测试图像分析（可选）
+### 4. 测试图像分析（可选）
 
 ```bash
-# 分析包含安全隐患的图片
+# 基本用法：仅使用VLM识别隐患
 curl -X POST "http://localhost:8080/api/analysis/image" \
   -F "file=@construction_site.jpg" \
   | jq .
-```
 
-**预期输出**：
-```json
-{
-  "report_id": "uuid-xxx",
-  "violations": [
-    {
-      "hazard_id": 1,
-      "hazard_description": "作业人员未佩戴安全帽",
-      "recommendations": "1. 立即停止作业并佩戴安全帽\n2. 加强现场安全教育",
-      "rule_reference": "根据《建筑施工安全规范.xlsx》，施工现场必须佩戴安全帽",
-      "source_documents": [
-        {
-          "filename": "建筑施工安全规范.xlsx",
-          "location": "工作表: 个人防护, 行: 5"
-        }
-      ]
-    }
-  ]
-}
-```
+# 高级用法：结合用户自定义隐患
+curl -X POST "http://localhost:8080/api/analysis/image" \
+  -F "file=@construction_site.jpg" \
+  -F "user_hazards=作业人员未佩戴反光背心" \
+  -F "user_hazards=施工区域无围挡" \
+  | jq .
+## 📚 使用指南
 
-## 📚 API 使用指南
+### API端点
 
-### 端点概览
+| 端点 | 方法 | 功能 |
+|------|------|------|
+| `/api/analysis/image` | POST | 图像安全分析（支持用户自定义隐患） |
+| `/api/documents/upload` | POST | 上传文档（PDF/Word/Excel/Markdown） |
+| `/api/documents` | GET | 文档列表 |
+| `/api/documents` | DELETE | 删除文档 |
 
-| 端点 | 方法 | 功能 | 端口 |
-|------|------|------|------|
-| `/api/analysis/image` | POST | 图像安全分析 | 8080 |
-| `/api/documents/upload` | POST | 上传文档 | 8080 |
-| `/api/documents` | GET | 文档列表 | 8080 |
-| `/api/documents` | DELETE | 删除文档 | 8080 |
-| `/docs` | GET | Swagger UI | 8080 |
-
-### 1. 图像安全分析
-
-**端点**: `POST /api/analysis/image`
+### 图像分析示例
 
 ```bash
-# 基本用法
+# 基础分析
 curl -X POST "http://localhost:8080/api/analysis/image" \
   -F "file=@image.jpg"
 
-# 使用 Python
-import requests
-
-response = requests.post(
-    "http://localhost:8080/api/analysis/image",
-    files={"file": open("image.jpg", "rb")}
-)
-result = response.json()
-
-# 访问源文档引用
-for violation in result["violations"]:
-    print(f"隐患: {violation['hazard_description']}")
-    print(f"规范: {violation['rule_reference']}")
-    for doc in violation["source_documents"]:
-        print(f"  来源: {doc['filename']} - {doc['location']}")
+# 传入用户自定义隐患（可选）
+curl -X POST "http://localhost:8080/api/analysis/image" \
+  -F "file=@image.jpg" \
+  -F "user_hazards=未佩戴安全帽" \
+  -F "user_hazards=高处作业无安全带"
 ```
 
-### 2. 文档管理
-
-#### 上传文档
+### 文档管理示例
 
 ```bash
-# 单个文档
+# 上传文档
 curl -X POST "http://localhost:8080/api/documents/upload" \
   -F "files=@document.pdf"
 
-# 多个文档（批量）
-curl -X POST "http://localhost:8080/api/documents/upload" \
-  -F "files=@doc1.pdf" \
-  -F "files=@doc2.xlsx" \
-  -F "files=@doc3.docx"
+# 查看文档列表
+curl -X GET "http://localhost:8080/api/documents"
 
-# 跳过已存在的文档（推荐）
-curl -X POST "http://localhost:8080/api/documents/upload?skip_existing=true" \
-  -F "files=@document.pdf"
+# 删除文档
+curl -X DELETE "http://localhost:8080/api/documents?filenames=document.pdf"
 ```
 
-**支持的文件格式**：
-- 📄 **PDF**：`.pdf` → `rag-regulations` 集合
-- 📝 **Word**：`.docx`, `.doc` → `rag-regulations` 集合
-- 📊 **Excel**：`.xlsx`, `.xls` → `rag-hazard-db` 集合（优化处理，10行/块）
-- 📋 **Markdown**：`.md` → `rag-regulations` 集合（HTML 清理，章节提取）
-
-**多集合架构说明**：
-- `rag-regulations`：存储安全规范、标准文件（PDF/Word/Markdown）
-- `rag-hazard-db`：存储隐患数据库、检查表（Excel），独立优化避免向量污染
-
-#### 查看文档列表
-
-```bash
-curl -X GET "http://localhost:8080/api/documents" | jq .
-```
-
-#### 删除文档
-
-```bash
-# 删除单个文档
+**支持格式**：PDF、Word、Excel、Markdown
 curl -X DELETE "http://localhost:8080/api/documents" \
   -H "Content-Type: application/json" \
   -d '{"document_names": ["document.pdf"]}'
@@ -295,116 +249,96 @@ curl -X DELETE "http://localhost:8080/api/documents" \
 
 ## ⚙️ 配置说明
 
-### 环境变量（docker-compose.yaml）
+### 环境变量配置
 
-```yaml
-environment:
-  QDRANT_HOST: qdrant-server              # Qdrant 主机
-  QDRANT_PORT: 6333                       # Qdrant 端口
-  VLLM_CHAT_URL: http://vllm-qwen-vl:8000/v1      # VLM 聊天端点
-  VLLM_EMBED_URL: http://vllm-bge-m3:8000/v1      # 嵌入端点
-  VLLM_RERANK_URL: http://vllm-bge-reranker:8000  # 重排序端点
-  VLLM_MODEL_NAME: /model/qwen3-vl-4b             # VLM 模型路径
-  VLLM_EMBED_MODEL: /model/bge-m3                 # 嵌入模型路径
-  VLLM_RERANK_MODEL: /model/bge-reranker-v2-m3    # 重排序模型路径
+#### 阿里云API模式（.env.aliyun.example）
+
+```bash
+# 部署模式
+DEPLOYMENT_MODE=aliyun
+
+# 阿里云API配置
+DASHSCOPE_API_KEY=sk-xxx                        # 必填：阿里云API密钥
+
+# 本地模型服务
+VLLM_EMBED_URL=http://vllm-bge-m3:8000/v1
+VLLM_EMBED_MODEL=/model/bge-m3
+VLLM_RERANK_URL=http://vllm-bge-reranker:8000
+VLLM_RERANK_MODEL=/model/bge-reranker-v2-m3
+
+# 日志配置
+LOG_LEVEL=INFO
+LOG_FILE_PATH=logs/app.log
+LOG_ROTATION=100 MB
+LOG_RETENTION=30 days
+```
+
+#### 本地vLLM模式（.env.local.example）
+
+```bash
+# 部署模式
+DEPLOYMENT_MODE=local
+
+# 本地vLLM服务配置
+VLLM_LLM_URL=http://vllm-qwen-vl:8000/v1
+VLLM_LLM_MODEL=/model/qwen3-vl-4b               # 注意：小写路径
+VLLM_EMBED_URL=http://vllm-bge-m3:8000/v1
+VLLM_EMBED_MODEL=/model/bge-m3
+VLLM_RERANK_URL=http://vllm-bge-reranker:8000
+VLLM_RERANK_MODEL=/model/bge-reranker-v2-m3
+
+# 日志配置
+LOG_LEVEL=INFO
+LOG_FILE_PATH=logs/app.log
+LOG_ROTATION=100 MB
+LOG_RETENTION=30 days
 ```
 
 ### 核心参数（app/core/config.py）
 
-详细配置请参考 [CONFIG_GUIDE.md](CONFIG_GUIDE.md)。以下是关键参数：
+详细配置请参考 [CONFIG_GUIDE.md](CONFIG_GUIDE.md)。以下是关键参数：## ⚙️ 配置说明
+
+### 核心配置项
 
 ```python
-class Settings(BaseSettings):
-    # === 多集合策略 ===
-    qdrant_regulations_collection: str = "rag-regulations"  # 规范文档集合
-    qdrant_hazard_db_collection: str = "rag-hazard-db"      # 隐患数据库集合
-    
-    # === 文本分割 ===
-    chunk_size: int = 1000              # 通用文本块大小
-    chunk_overlap: int = 200            # 文本块重叠
-    excel_rows_per_chunk: int = 10      # Excel 每块行数
-    
-    # === RAG 检索参数 ===
-    retrieval_top_k: int = 3                      # 返回文档数
-    retrieval_score_threshold: float = 0.4        # 相似度阈值（硬阈值）
-    rerank_score_threshold: float = 0.3           # 重排序阈值
-    fetch_k_multiplier: int = 50                  # fetch_k = k × 50
-    rerank_top_n_multiplier: int = 10             # rerank_top_n = k × 10
-    min_relevant_docs_per_hazard: int = 2         # 每个隐患最少文档数
-    
-    # === Token 预算（适配 Qwen3-VL-4B max_model_len=5840）===
-    max_doc_length: int = 600            # 单文档最大字符数
-    max_context_length: int = 1000       # 总上下文最大字符数
-    llm_max_tokens: int = 1500           # LLM 输出 token 限制
-    
-    # === Excel 优化 ===
-    excel_key_fields: list[str] = [
-        "物品/设备名称", "危害", "个人防护装备（PPE）",
-        "安全措施", "应急措施", "法律法规", "安全防护", ...
-    ]
-    
-    # === 文件上传 ===
-    max_file_size: int = 500 * 1024 * 1024    # 50MB
-    max_files: int = 10                        # 最大文件数
+# 部署模式
+deployment_mode: "aliyun" | "local"    # 阿里云API或本地vLLM
+
+# 日志配置（loguru）
+log_level: "INFO"                       # 日志级别
+log_file_path: "logs/app.log"          # 日志文件
+log_rotation: "100 MB"                  # 日志轮转
+log_retention: "30 days"                # 保留时间
+
+# RAG检索
+retrieval_score_threshold: 0.2          # 向量相似度阈值
+rerank_score_threshold: 0.3             # 重排序阈值
+regulations_retrieval_k: 5              # 规范文档检索数量
+hazard_db_retrieval_k: 5                # 隐患数据库检索数量
+
+# 文本处理
+chunk_size: 1000                        # 文本块大小
+excel_rows_per_chunk: 10                # Excel合并行数
+max_doc_length: 1500                    # 单文档最大字符
+max_context_length: 3000                # 总上下文限制
 ```
 
-**配置优化建议：**
-- 📊 **高精度场景**：`retrieval_score_threshold=0.5`, `min_relevant_docs_per_hazard=3`
-- ⚡ **高召回场景**：`retrieval_score_threshold=0.3`, `fetch_k_multiplier=100`
-- 💾 **低显存场景**：`max_context_length=800`, `llm_max_tokens=1000`
-- 📈 **Excel 密集场景**：`excel_rows_per_chunk=5`（更细粒度）
+### 环境变量
 
-### 模型 GPU 内存分配
-
-在 `docker-compose.yaml` 中调整每个模型的显存占用：
-
-```yaml
-# Qwen-VL（最大）
---gpu-memory-utilization 0.7    # 70% 显存
-
-# BGE-m3（中等）
---gpu-memory-utilization 0.2    # 20% 显存
-
-# Reranker（最小）
---gpu-memory-utilization 0.15   # 15% 显存
-```
-
-**显存需求参考**：
-- Qwen-VL-4B: ~8GB
-- BGE-m3: ~2GB
-- Reranker-v2-M3: ~1.5GB
-- **总计**: ~12GB（推荐 16GB+ GPU）
-
-## 💾 数据持久化
-
-### Qdrant 向量数据库
-
+**阿里云模式** (`.env.aliyun.example`):
 ```bash
-# 数据存储位置
-./data/qdrant/           # 项目目录下（便于备份）
-
-# 备份数据
-tar -czf qdrant_backup.tar.gz ./data/qdrant/
-
-# 恢复数据
-tar -xzf qdrant_backup.tar.gz
-
-# 清空所有数据
-docker compose down
-rm -rf ./data/qdrant/
-docker compose up -d
+DEPLOYMENT_MODE=aliyun
+DASHSCOPE_API_KEY=sk-xxx              # 必填
 ```
 
-### 上传文件存储
-
+**本地模式** (`.env.local.example`):
 ```bash
-# 文件存储位置
-./file/                  # 原始文档存储
-
-# 注意：删除文档时不会删除原始文件
-# 手动清理文件存储
-rm -rf ./file/*
+DEPLOYMENT_MODE=local
+VLLM_LLM_URL=http://vllm-qwen-vl:8000/v1
+VLLM_LLM_MODEL=/model/qwen3-vl-4b
 ```
+
+详细配置说明见 [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
 
 ## ❓ 常见问题
 
@@ -463,6 +397,42 @@ docker compose logs vllm-qwen-vl
 # 2. 检查 GPU 状态
 nvidia-smi
 
+## 🔧 常见问题
+
+### 服务相关
+
+**Q: 如何切换部署模式？**
+```bash
+# 停止当前服务
+docker compose -f docker-compose.{aliyun/local}.yaml down
+
+# 修改.env中的DEPLOYMENT_MODE
+vim .env
+
+# 启动新模式
+docker compose -f docker-compose.{aliyun/local}.yaml up -d
+```
+
+**Q: 如何查看日志？**
+```bash
+# 实时日志
+docker compose logs -f safetyvision-api
+
+# 日志文件（持久化）
+tail -f logs/app.log
+
+# 查看特定服务
+docker logs vllm-qwen-vl
+```
+
+**Q: 服务启动失败？**
+```bash
+# 1. 检查GPU
+nvidia-smi
+
+# 2. 检查端口占用
+netstat -tulpn | grep -E "8000|8080|6333"
+
 # 3. 重启服务
 docker compose restart
 
@@ -470,100 +440,30 @@ docker compose restart
 docker compose down && docker compose up -d --build
 ```
 
-### Q6: 如何调整检索精度？
+### 配置相关
 
-修改 `app/core/config.py`：
+**Q: 如何调整检索精度？**
 
+编辑 `app/core/config.py` 或通过环境变量：
 ```python
-# 当前默认（平衡精度和召回）
-retrieval_score_threshold: float = 0.2   # 向量搜索阈值
-rerank_score_threshold: float = 0.3      # 重排序阈值
-fetch_k_multiplier: int = 100            # 召回倍数（k×100）
+# 精度优先
+retrieval_score_threshold: 0.3
+rerank_score_threshold: 0.4
 
-# 更严格（精度优先）
-retrieval_score_threshold: float = 0.3
-rerank_score_threshold: float = 0.4
-
-# 更宽松（召回优先）
-retrieval_score_threshold: float = 0.1
-rerank_score_threshold: float = 0.2
+# 召回优先  
+retrieval_score_threshold: 0.1
+rerank_score_threshold: 0.2
 ```
 
-### Q7: 如何自定义 Chainlit UI？
+**Q: 本地模式GPU不足？**
 
-```toml
-# 编辑 .chainlit/config.toml
-[UI]
-name = "安全生产大模型知识问答系统"  # 标题
-language = "zh-CN"                    # 界面语言
-# custom_css = "/public/custom.css"   # 自定义样式（可选）
-
-[features]
-latex = true                           # LaTeX 公式支持
+调整 `docker-compose.local.yaml` 中的显存分配：
+```yaml
+# 降低Qwen-VL显存占用
+--gpu-memory-utilization 0.5    # 从0.7降至0.5
 ```
 
-创建中文欢迎页面：`chainlit_zh-CN.md`
-
-## 🛠️ 开发指南
-
-### 本地开发环境
-
-```bash
-# 1. 安装 Python 依赖
-pip install -r requirements.txt
-
-# 2. 启动后端服务（GPU 模型 + 数据库）
-docker compose up -d qdrant-server vllm-qwen-vl vllm-bge-m3 vllm-bge-reranker
-
-# 3. 本地运行 API（支持热重载）
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 运行测试
-
-```bash
-# 测试图像分析
-python -c "
-import requests
-response = requests.post(
-    'http://localhost:8080/api/analysis/image',
-    files={'file': open('test.jpg', 'rb')}
-)
-print(response.json())
-"
-
-# 测试文档上传
-curl -X POST "http://localhost:8080/api/documents/upload" \
-  -F "files=@test.pdf"
-```
-
-### 代码风格
-
-```bash
-# 格式化代码
-black app/ src/
-
-# 类型检查
-mypy app/ --ignore-missing-imports
-
-# 排序导入
-isort app/ src/
-```
-
-## 🚀 性能优化
-
-### 1. 检索性能优化
-
-**当前配置**（平衡精度和速度）：
-```python
-# 配置文件：app/core/config.py
-retrieval_top_k: int = 3                      # 返回 Top-3 文档
-fetch_k_multiplier: int = 50                  # fetch_k = k × 50 = 150
-rerank_top_n_multiplier: int = 10             # rerank_top_n = k × 10 = 30
-retrieval_score_threshold: float = 0.4        # 硬阈值（平衡精度和召回）
-rerank_score_threshold: float = 0.3           # 重排序阈值
-min_relevant_docs_per_hazard: int = 2         # 每个隐患最少文档数
-```
+更多问题参考 [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
 
 **高精度配置**（牺牲速度）：
 ```python
@@ -597,91 +497,73 @@ llm_max_tokens: int = 1500          # LLM 输出 token 限制
 # - System Prompt: ~500 tokens
 # - 图像理解结果: ~500 tokens
 # - RAG 上下文: ~1000 tokens (max_context_length)
-# - 输出预留: ~1500 tokens (llm_max_tokens)
-# - 安全边际: ~2340 tokens
-```
-
-**问题排查**：
-- ⚠️ "输出超长度限制" 错误 → 降低 `max_context_length` 或 `llm_max_tokens`
-- ⚠️ 文档内容被截断 → 增加 `max_doc_length`（需同步减少 `llm_max_tokens`）
-
-### 3. 并发处理优化
-
-**当前实现**（已优化）：
-```python
-# app/services/analysis_service.py
-
-# 并行检索（多个隐患同时检索文档）
-retrieval_tasks = [
-    self._batch_retrieve_per_hazard(hazard, retriever, reranker)
-    for hazard in hazards
-]
-docs_per_hazard = await asyncio.gather(*retrieval_tasks)
-
-# 并行生成（多个 violation 同时调用 LLM）
-violation_tasks = [
-    self._generate_single_violation(hazard, docs, chain)
-    for hazard, docs in zip(hazards, docs_per_hazard) if docs
-]
-violations = await asyncio.gather(*violation_tasks)
-```
-
-**进一步优化**（可选）：
-```python
-# 限制并发数（防止 OOM）
-from asyncio import Semaphore
-
-MAX_CONCURRENT_VIOLATIONS = 5  # 最多 5 个并发 LLM 调用
-semaphore = Semaphore(MAX_CONCURRENT_VIOLATIONS)
-
-async def _generate_with_limit(hazard, docs, chain):
-    async with semaphore:
-        return await self._generate_single_violation(hazard, docs, chain)
-
-violations = await asyncio.gather(*[
-    _generate_with_limit(h, d, chain)
-    for h, d in zip(hazards, docs_per_hazard) if d
-])
-```
-
-### 4. 代码质量优化（已完成）
-
-**优化成果**：
-- ✅ 删除冗余代码：~50 行（retrieve_with_mmr、双重判断逻辑、LLM 后处理截断）
-- ✅ 简化判断逻辑：从 `if max_score >= 0.5 and len >= 2` 改为 `if len >= min_docs`
-- ✅ 移除无用截断：LLM 输出已在 Prompt 中限制，无需后处理
-- ✅ 性能提升：每个请求节省 ~35ms（逻辑简化 10ms + 截断移除 5ms × N 个隐患）
-
-**代码审计清单**：
-- [x] 移除未使用的方法（`retrieve_with_mmr`）
-- [x] 简化条件判断（单条件 vs 双条件）
-- [x] 删除冗余后处理（LLM 输出截断）
-- [x] 配置整合（45+ 项统一管理）
-- [ ] 实现并发限制（`Semaphore`，可选）
-- [ ] 添加缓存层（重复请求优化，可选）
-
 ## 📊 技术栈
 
 ### 核心框架
-- **FastAPI** 0.115+：异步 Web 框架
-- **LangChain** 1.0+：RAG 框架，结构化输出
+- **FastAPI** 0.115+：异步Web框架
+- **LangChain** 1.0+：RAG框架，结构化输出
 - **Pydantic** 2.0+：数据验证和配置管理
+- **Loguru**：统一日志管理
 
-### AI 模型
-- **Qwen-VL-4B**：多模态视觉-语言模型（图像理解）
-- **BGE-m3**：多语言文本嵌入模型（768维）
-- **BGE-Reranker-v2-M3**：文档重排序模型
+### AI模型
+**阿里云模式**：
+- VLM/LLM：DashScope API (qwen3-vl-plus / qwen3-max-preview)
+- Embedding/Reranker：本地vLLM (BGE-M3 / BGE-Reranker-v2-M3)
+
+**本地模式**：
+- 所有模型：vLLM (Qwen3-VL-4B / BGE-M3 / BGE-Reranker-v2-M3)
 
 ### 基础设施
-- **vLLM**：高性能 LLM 推理引擎
-- **Qdrant**：向量数据库（HNSW 索引）
+- **vLLM**：高性能LLM推理
+- **Qdrant**：向量数据库
 - **Docker Compose**：容器编排
 
-### 文档处理
-- **pypdf**：PDF 解析
-- **python-docx**：Word 文档解析
-- **openpyxl/xlrd**：Excel 解析
-- **antiword**：旧版 DOC 解析
+## 🆕 版本更新
+
+### v2.1.0 (2026-01-07)
+
+**新特性**：
+- ✅ 双模式部署（阿里云API / 本地vLLM）灵活切换
+- ✅ 统一日志系统（loguru + 文件轮转）
+- ✅ 用户自定义隐患输入，与VLM识别结果融合
+- ✅ Pydantic v2配置系统，正确读取`.env`文件
+- ✅ 兼容性修复：vLLM使用json_mode，阿里云使用function_calling
+
+**优化**：
+- 🔧 docker-compose环境变量从`.env`读取，避免硬编码
+- 🔧 模型名称大小写修正（/model/qwen3-vl-4b）
+- 📝 新增完整部署指南文档
+
+**技术改进**：
+- LangChain `with_structured_output()`自动适配不同provider
+- 移除对特定tool calling实现的依赖
+- 提升代码可维护性和配置灵活性
+  - 配置文件：`docker-compose.aliyun.yaml`
+  
+- 💻 **本地vLLM模式**：开发/离线环境
+  - 完全离线运行，数据不出本地
+  - GPU需求：~24GB（全部本地模型）
+  - 配置文件：`docker-compose.local.yaml`
+
+#### 2. 用户自定义隐患描述
+- 支持从前端传入用户自己描述的隐患
+- 与VLM识别结果智能融合
+- API新增`user_hazards`参数（数组类型）
+
+#### 3. 统一日志系统（Loguru）
+- 替换所有print()语句为loguru logger
+- 支持彩色控制台输出 + 文件持久化
+- 自动日志轮转（100MB）和保留（30天）
+- 可配置日志级别：DEBUG/INFO/WARNING/ERROR/CRITICAL
+
+#### 4. 兼容性改进
+- 修复Pydantic v2配置读取（`Config` → `model_config`）
+- 优化vLLM structured output兼容性
+  - 阿里云：使用`method="function_calling"`
+  - vLLM：使用`method="json_mode"`（无需特殊启动参数）
+- 统一模型名称大小写规范
+
+详细部署说明请参考：[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
 
 ## 📁 项目结构详解
 
@@ -715,97 +597,31 @@ SafetyVision-RAG/
 ├── docker-compose.yaml                 # 服务编排（5 个容器）
 ├── Dockerfile                          # API 镜像构建
 ├── requirements.txt                    # Python 依赖
-├── CONFIG_GUIDE.md                     # ⭐ 配置指南（详细说明）
-└── README.md                           # ⭐ 本文件（项目总览）
-```
-
-**架构设计亮点**：
-- 💬 **Chainlit 2.9+**：现代化对话 UI，流式回答，LaTeX 公式，完整中文化
-- 🎯 **Clean Architecture**：领域驱动设计，依赖倒置
-- 🔍 **混合检索**：向量 + 关键词 + 文档名过滤 + 精确匹配优先
-- 🔢 **智能数字转换**：阿拉伯/中文数字自动转换（32 ↔ 三十二）
-- ⚙️ **配置统一**：45+ 配置项集中管理，类型安全
-- 🚀 **异步优先**：全异步设计，支持高并发
-
-## 🔗 相关资源
-
-- [Chainlit 官方文档](https://docs.chainlit.io) - 对话 UI 框架
-- [LangChain](https://python.langchain.com) - LLM 应用框架
-- [Qdrant](https://qdrant.tech) - 向量数据库
-- [vLLM](https://github.com/vllm-project/vllm) - 高性能推理引擎
-- [Qwen-VL](https://github.com/QwenLM/Qwen-VL) - 多模态大模型
-
-## 📄 许可证
-
-MIT License - 详见 [LICENSE](LICENSE) 文件
-
 ## 📝 更新日志
 
-### v3.1.0 (2025-12-17) - Chainlit UI & Hybrid Retrieval
-**Chainlit 对话界面：**
-- ✅ 流式对话 UI（`msg.stream_token()`）+ LaTeX 公式支持
-- ✅ 完整中文化（`language = "zh-CN"` + `chainlit_zh-CN.md`）
-- ✅ Starter 推荐问题（引导用户快速上手）
-- ✅ 对话历史管理（最近 10 轮消息，支持上下文连续对话）
-- ✅ 官方最佳实践（无需自定义 CSS hack）
+### v2.1.0 (2026-01-07)
 
-**混合检索优化：**
-- ✅ 向量搜索 + 关键词匹配 + 文档名过滤
-- ✅ 精确定位支持：`《文档名》第X条` 查询
-- ✅ 阿拉伯/中文数字自动转换（32 ↔ 三十二）
-- ✅ `min_should` 过滤：强制匹配至少一个条款号
-- ✅ 精确匹配优先：`doc_article` 类型排在 rerank 之前
-- ✅ 检索阈值优化：相似度 0.2 + Rerank 0.3
+**新特性**：
+- ✅ 双模式部署（阿里云API / 本地vLLM）灵活切换
+- ✅ 统一日志系统（loguru + 文件轮转 + 保留策略）
+- ✅ 用户自定义隐患输入，与VLM识别结果融合
+- ✅ Pydantic v2配置系统，正确读取`.env`文件
 
-**配置与文档：**
-- ✅ `.gitignore` 优化：排除 `.chainlit/translations/`（自动生成）
-- ✅ README 更新：整合 Chainlit 架构，精简常见问题
-- ✅ 删除冗余文档：保留核心 README + Chainlit 欢迎页
+**修复**：
+- 🔧 docker-compose环境变量从`.env`读取，避免硬编码
+- 🔧 模型名称大小写修正（/model/qwen3-vl-4b）
+- 🔧 vLLM兼容性：使用json_mode替代function_calling
+- 🔧 FastAPI deprecation警告修复（regex → pattern）
 
-### v3.0.0 (2025-12-15) - Multi-Collection & Code Quality
-**核心功能：**
-- ✅ 双集合架构：`rag-qa-knowledge`（QA 知识库）
-- ✅ 45+ 配置项统一管理（`config.py`）
-- ✅ Excel 优化：10 行/块，16 个关键字段
-- ✅ Markdown 支持：章节标题提取，HTML 清理
-- ✅ 动态召回：fetch_k = k × 100，提升检索覆盖
-
-**代码质量：**
-- ✅ 删除冗余代码 ~50 行（retrieve_with_mmr、双重判断）
-- ✅ 性能提升 ~35ms/请求
-- ✅ Clean Architecture 重构
-
-### v2.0.0 (2025-12-03) - RAG Quality & Architecture Optimization
-**架构优化：**
-- ✅ Clean Architecture 重构（领域驱动设计）
-- ✅ LangChain v1.0+ 最佳实践（`with_structured_output`）
-- ✅ 依赖注入模式（FastAPI `Depends()`）
-- ✅ Pydantic Settings 配置管理
-
-**RAG 质量提升：**
-- ✅ 两阶段检索策略（Similarity Search + Rerank）
-- ✅ 相关性过滤（相似度 0.65 + Rerank 0.3）
-- ✅ 源文档溯源（`SourceReference` 模型）
-- ✅ Token 预算优化（输入 900 + 输出 4096）
-
-**新增功能：**
-- ✅ 多格式文档支持（PDF, DOCX, DOC, XLSX, XLS）
-- ✅ Excel 行级语义搜索（精确到工作表+行号）
-- ✅ BGE-Reranker-v2-M3 重排序模型集成
-- ✅ Per-Hazard Retrieval（每个隐患独立检索）
-
-**性能优化：**
-- ✅ 异步并行处理（`asyncio.gather`）
-- ✅ 热重载开发环境（volume 挂载）
-- ✅ Docker 健康检查优化
-- ✅ 推理速度提升（从 1-2 分钟 → 几秒钟）
-
-### v1.0.0 (2025-11-10) - Initial Release
-- ✅ 图像安全分析（Qwen-VL-4B）
-- ✅ 文档管理 API（上传、删除、列表）
-- ✅ 基础 RAG 检索（BGE-m3 嵌入）
-- ✅ Docker Compose 容器编排
+**文档**：
+- 📝 新增部署指南 [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
+- 📝 README精简优化，保持简洁清晰
 
 ---
 
-**Built with ❤️ by AI Safety Team**
+**详细技术说明请参考**：
+- 📖 [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) - 部署指南
+- 🔗 [LangChain 文档](https://python.langchain.com) - RAG框架
+- 🔗 [vLLM 文档](https://docs.vllm.ai) - 推理引擎
+
+**Built with ❤️**
