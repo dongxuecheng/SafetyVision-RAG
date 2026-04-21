@@ -3,6 +3,7 @@ QA API endpoints
 """
 
 from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.responses import StreamingResponse
 from app.schemas.qa import QARequest, QAResponse
 from app.services.qa_service import QAService
 
@@ -39,3 +40,20 @@ async def ask_question(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to answer question: {str(e)}",
         )
+
+@router.post("/simple_qa")
+async def simple_qa(
+    request: QARequest, qa_service: QAService = Depends(get_qa_service)
+):
+    """
+    数字人专用 QA 接口。
+    - 关闭了 Think 模式
+    - 不返回 Source 对象
+    - 采用 SSE 流式返回纯文本答案
+    """
+    # 返回为标准的 SSE 内容流，Content-Type: text/event-stream
+    return StreamingResponse(
+        qa_service.answer_question_stream_simple(request.question), 
+        media_type="text/event-stream"
+    )
+

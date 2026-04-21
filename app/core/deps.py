@@ -23,11 +23,11 @@ def get_qdrant_client() -> QdrantClient:
 @lru_cache()
 def get_llm() -> ChatOpenAI:
     """
-    Get LLM instance for RAG QA
+    Get Multimodal LLM instance
 
     Supports two deployment modes:
-    - 'aliyun': Use Aliyun DashScope API (qwen3-max-preview)
-    - 'local': Use local vLLM service (Qwen3-VL-4B)
+    - 'aliyun': Use Aliyun DashScope API
+    - 'local': Use local vLLM service
     """
     settings = get_settings()
     import os
@@ -48,6 +48,9 @@ def get_llm() -> ChatOpenAI:
             base_url=settings.dashscope_base_url,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
+            extra_body={
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
         )
     else:  # local mode
         logger.info("Initializing LLM with local vLLM service")
@@ -57,47 +60,18 @@ def get_llm() -> ChatOpenAI:
             base_url=settings.vllm_llm_url,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
+            extra_body={
+                "chat_template_kwargs": {"enable_thinking": False}
+            }
         )
-
 
 @lru_cache()
 def get_vlm() -> ChatOpenAI:
     """
-    Get VLM instance for image analysis
-
-    Supports two deployment modes:
-    - 'aliyun': Use Aliyun DashScope Multimodal API (qwen3-vl-plus)
-    - 'local': Use local vLLM service (Qwen3-VL-4B)
+    Since models are now natively multimodal, get_vlm returns exactly what get_llm does.
+    Preserved for backward compatibility.
     """
-    settings = get_settings()
-    import os
-
-    if settings.deployment_mode == "aliyun":
-        logger.info("Initializing VLM with Aliyun DashScope API")
-        api_key = settings.dashscope_api_key or os.getenv("DASHSCOPE_API_KEY", "")
-
-        if not api_key:
-            raise ValueError(
-                "DashScope API Key not found. "
-                "Please set DASHSCOPE_API_KEY environment variable or configure it in settings."
-            )
-
-        return ChatOpenAI(
-            model_name=settings.vlm_model_name,
-            api_key=api_key,
-            base_url=settings.dashscope_base_url,
-            temperature=settings.vlm_temperature,
-            max_tokens=settings.llm_max_tokens,
-        )
-    else:  # local mode
-        logger.info("Initializing VLM with local vLLM service")
-        return ChatOpenAI(
-            model_name=settings.vllm_llm_model,
-            api_key="EMPTY",  # vLLM doesn't require API key
-            base_url=settings.vllm_llm_url,
-            temperature=settings.vlm_temperature,
-            max_tokens=settings.llm_max_tokens,
-        )
+    return get_llm()
 
 
 @lru_cache()

@@ -15,7 +15,7 @@ services:
       resources:
         reservations:
           devices:
-            - driver: nvidia
+            - driver: nvidia 
               capabilities: [ gpu ]
     environment:
       NVIDIA_VISIBLE_DEVICES: all
@@ -98,6 +98,7 @@ services:
       - ./file:/app/file:rw
       - ./logs:/app/logs:rw  # 日志目录
     environment:
+      TZ: Asia/Shanghai
       # Deployment Mode
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE}
       
@@ -148,6 +149,7 @@ services:
       - ./chainlit_zh-CN.md:/app/chainlit_zh-CN.md:ro
       - ./logs:/app/logs:rw  # 日志目录
     environment:
+      TZ: Asia/Shanghai
       # Deployment Mode
       DEPLOYMENT_MODE: ${DEPLOYMENT_MODE}
       

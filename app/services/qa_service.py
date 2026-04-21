@@ -78,6 +78,61 @@ class QAService:
 
         return QAResponse(answer=answer, sources=sources, has_relevant_sources=True)
 
+    async def answer_question_stream_simple(self, question: str):
+        """
+        Answer user question using RAG, return stream without sources, disabled thinking mode.
+        Useful for digital avatars (数字人).
+        """
+        # Step 1: Retrieve relevant documents
+        docs = await self.retriever.retrieve_with_fallback(
+            query=question,
+            k=self.settings.regulations_retrieval_k,
+            score_threshold=self.settings.retrieval_score_threshold,
+        )
+
+        has_sources = len(docs) > 0 and (
+            docs[0].metadata.get("score", 0.0) >= self.settings.min_retrieval_score
+        )
+
+        if not has_sources:
+            yield "抱歉，我在知识库中没有找到与您的问题相关的信息。"
+            return
+
+        context = self._format_context(docs)
+
+        messages = [
+            SystemMessage(
+                content="""你是一个专业的知识问答助手，负责为数字人提供回答。
+根据提供的文档内容回答用户问题。
+
+要求：
+1. 答案必须基于提供的文档内容，不要编造信息
+2. 如果文档中没有相关信息，请直接回答未找到相关信息
+3. 回答要口语化、准确、简洁、易懂，适合直接朗读
+4. 尽量不要使用复杂的Markdown格式或表格
+"""
+            ),
+            HumanMessage(
+                content=f"""问题: {question}
+
+参考文档:
+{context[:self.settings.max_context_length]}
+
+请基于以上文档回答问题。"""
+            ),
+        ]
+
+        try:
+            # 流式返回，并通过 extra_body 禁用思考模式
+            async for chunk in self.llm.astream(
+                messages,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}}
+            ):
+                if chunk.content:
+                    yield chunk.content
+        except Exception as e:
+            yield f"抱歉，生成答案时出现错误: {str(e)}"
+
     def _format_context(self, docs: List[Document]) -> str:
         """
         Format retrieved documents into context string
@@ -225,7 +280,10 @@ class QAService:
         )
 
         try:
-            async for chunk in self.llm.astream(messages):
+            async for chunk in self.llm.astream(
+                messages,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            ):
                 if chunk.content:
                     yield chunk.content
         except Exception as e:

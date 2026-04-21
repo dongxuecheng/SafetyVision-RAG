@@ -52,6 +52,7 @@ class Settings(BaseSettings):
         "条文内容",
         "规范条文",
         "隐患整改要求",
+        "隐患排查依据",
     ]  # Only index these key fields from Excel
 
     # Deployment Mode: 'local' or 'aliyun'
@@ -61,11 +62,8 @@ class Settings(BaseSettings):
     dashscope_api_key: str = ""  # Set via environment variable DASHSCOPE_API_KEY
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-    # VLM Model for Image Analysis (Multimodal)
-    vlm_model_name: str = "qwen3-vl-plus"  # Aliyun multimodal model (aliyun mode)
-
-    # LLM Model for RAG QA (Text-only)
-    llm_model_name: str = "qwen3-max-preview"  # Aliyun text model (aliyun mode)
+    # Unified Multimodal LLM Model (aliyun mode)
+    llm_model_name: str = "qwen-vl-max-latest"
 
     # Local vLLM Settings (for local mode)
     vllm_llm_url: str = "http://vllm-qwen-vl:8000/v1"  # Local vLLM service URL
@@ -90,10 +88,9 @@ class Settings(BaseSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 200
 
-    # LLM Settings (Aliyun API)
+    # LLM Settings (Aliyun API & Local)
     llm_temperature: float = 0.0
     llm_max_tokens: int = 3500  # Max tokens for LLM response
-    vlm_temperature: float = 0.0  # VLM temperature for image analysis
 
     # RAG Retrieval Settings
     retrieval_score_threshold: float = 0.2  # Lowered: Let reranker do the filtering
