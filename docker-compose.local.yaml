@@ -40,7 +40,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 420s
 
   # (服务 2) BGE-M3 Embedding 模型
   vllm-bge-m3:
@@ -73,7 +73,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 160s
 
   # (服务 3) BGE-Reranker-v2-M3 重排序模型
   vllm-bge-reranker:
@@ -106,7 +106,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 160s
 
   # (服务 4) Qdrant 向量数据库
   qdrant-server:

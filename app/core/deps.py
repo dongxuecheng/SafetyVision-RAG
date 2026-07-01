@@ -48,9 +48,7 @@ def get_llm() -> ChatOpenAI:
             base_url=settings.dashscope_base_url,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
-            extra_body={
-                "chat_template_kwargs": {"enable_thinking": False}
-            }
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
     else:  # local mode
         logger.info("Initializing LLM with local vLLM service")
@@ -60,10 +58,9 @@ def get_llm() -> ChatOpenAI:
             base_url=settings.vllm_llm_url,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
-            extra_body={
-                "chat_template_kwargs": {"enable_thinking": False}
-            }
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
+
 
 @lru_cache()
 def get_vlm() -> ChatOpenAI:
@@ -82,6 +79,7 @@ def get_embeddings() -> OpenAIEmbeddings:
         model=settings.vllm_embed_model,
         api_key="not-needed",
         base_url=settings.vllm_embed_url,
+        check_embedding_ctx_length=False,
     )
 
 

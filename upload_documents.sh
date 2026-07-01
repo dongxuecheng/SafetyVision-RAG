@@ -2,8 +2,8 @@
 # 批量上传指定文件夹下的所有文档
 
 # 默认配置
-API_URL="http://localhost:8080"
-DEFAULT_DIR="/home/xcd/SafetyVision-RAG/file"
+API_URL="http://172.16.20.193:18080"
+DEFAULT_DIR="/mnt/dxc/backup-3090/SafetyVision-RAG/file"
 DEFAULT_PROJECT="safety"  # 默认项目：safety (隐患识别) 或 qa (知识问答)
 
 # 使用方法
@@ -236,9 +236,9 @@ while IFS= read -r file; do
     fi
     echo "   📦 Collection: $collection_type"
     
-    # 上传文件
+    # 上传文件（注意：文件名可能包含空格，需用引号包裹）
     response=$(curl -s -X POST "$API_URL/api/documents/upload?purpose=$PROJECT&skip_existing=$SKIP_EXISTING" \
-        -F "files=@$file" \
+        -F "files=@\"$file\"" \
         --max-time 120 2>&1)
     
     # 解析响应
@@ -260,6 +260,16 @@ try:
         chunks = detail.get('chunks', 0)
         msg = detail.get('message', '')
         print(f'{status}|{chunks}|{msg}')
+    elif 'detail' in data:
+        # FastAPI validation error (e.g. 422)
+        detail = data['detail']
+        if isinstance(detail, list) and detail:
+            msg = detail[0].get('msg', str(detail[0]))
+        elif isinstance(detail, str):
+            msg = detail
+        else:
+            msg = str(detail)
+        print(f'error|0|API error: {msg[:80]}')
     else:
         print('error|0|No details in response')
 except json.JSONDecodeError as e:
